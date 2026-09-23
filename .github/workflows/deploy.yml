@@ -1,0 +1,52 @@
+name: Deploy dashboard
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '*/15 * * * *'   # refresh data from Metabase (GitHub may delay scheduled runs)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Pull Metabase model → data.json
+        env:
+          METABASE_USER:     ${{ secrets.METABASE_USER }}
+          METABASE_PASSWORD: ${{ secrets.METABASE_PASSWORD }}
+          METABASE_API_KEY:  ${{ secrets.METABASE_API_KEY }}
+          CARD_ID:           ${{ vars.CARD_ID || '13134' }}
+        run: node scripts/build-data.mjs _site/data.json
+
+      - name: Add page
+        run: cp index.html _site/
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

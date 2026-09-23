@@ -133,7 +133,7 @@
     <div class="actions">
       <span class="sync-info" id="syncInfo">Loading…</span>
       <button class="btn-icon" id="themeBtn" title="Toggle theme">◐</button>
-      <button class="btn-sync" id="syncBtn">Sync</button>
+      <button class="btn-sync" id="syncBtn" title="Reload the latest data.json">Refresh</button>
     </div>
   </header>
   <div class="filters" id="filters">
@@ -460,18 +460,16 @@ function render(){
 // ─────────────────────────────────────────────────────────────
 // DATA
 // ─────────────────────────────────────────────────────────────
-async function load(force){
+async function load(){
   $('syncBtn').disabled = true;
   $('syncInfo').textContent = 'Syncing…';
   try {
-    const resp = await fetch('/api/data' + (force ? '?force=1' : ''));
-    const text = await resp.text();
-    let data;
-    try { data = JSON.parse(text); }
-    catch (e){ throw new Error(`/api/data returned ${resp.status} (not JSON). The API needs a Vercel deployment; static hosts like GitHub Pages can't run it.`); }
-    if (!resp.ok) throw new Error(data.error || resp.status);
+    // data.json is rebuilt from Metabase by the GitHub Action (.github/workflows/deploy.yml).
+    const resp = await fetch('data.json?t=' + Date.now(), { cache:'no-store' });
+    if (!resp.ok) throw new Error(`data.json not found (${resp.status}). Check that the "Deploy dashboard" GitHub Action has run.`);
+    const data = await resp.json();
     ROWS = data.rows || [];
-    $('syncInfo').textContent = `Synced ${new Date(data.lastSynced).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })} · ${fmt(ROWS.length)} rows`;
+    $('syncInfo').textContent = `Updated ${new Date(data.lastSynced).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })} · ${fmt(ROWS.length)} rows`;
     syncTriggers();
     render();
   } catch (err){
@@ -498,9 +496,9 @@ async function load(force){
   document.addEventListener('click', closePanels);
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanels(); });
   $('resetBtn').onclick = () => { for (const f of FILTERS) F[f.key] = null; setPreset('this_month'); changed(); };
-  $('syncBtn').onclick = () => load(true);
-  load(false);
-  setInterval(() => load(false), 5 * 60 * 1000);
+  $('syncBtn').onclick = () => load();
+  load();
+  setInterval(load, 5 * 60 * 1000);
 })();
 </script>
 </body>

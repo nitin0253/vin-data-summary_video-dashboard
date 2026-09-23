@@ -1,15 +1,15 @@
-// api/data.js
-// Thin layer over the Metabase model "VIN data summary video nik" (model 13134).
-// Fetches the model's results as CSV through the authenticated API, caches them,
-// and returns compact rows. All filtering and KPI math happens client-side.
+// scripts/build-data.mjs
+// Run by the GitHub Action: pulls the Metabase model "VIN data summary video nik"
+// (model 13134) as CSV through the authenticated API and writes compact rows to
+// a JSON file that GitHub Pages serves next to index.html.
+// All filtering and KPI math happens client-side.
+//
+//   node scripts/build-data.mjs [out-file]   (default: _site/data.json)
 
-let cache = null;
-let rawHeaders = [];
-let rawSample = [];
-let lastFetch = 0;
-const CACHE_TIME = 5 * 60 * 1000; // 5 min server-side cache
+import fs from 'node:fs';
+import path from 'node:path';
 
-// ── Config (Vercel → Settings → Environment Variables). NEVER commit credentials. ──
+// ── Config (GitHub → Settings → Secrets and variables → Actions). NEVER commit credentials. ──
 // METABASE_URL must be the base host only; the model number goes in CARD_ID.
 const MB = (process.env.METABASE_URL || 'https://metabase.spyne.ai').replace(/\/+$/, '');
 const CARD_ID    = process.env.CARD_ID || '13134';   // models are cards in the Metabase API
@@ -118,14 +118,12 @@ function normDate(s) {
   return '';
 }
 
-async function loadRows() {
-  if (cache && Date.now() - lastFetch < CACHE_TIME) return cache;
+async function main() {
+  const out = process.argv[2] || '_site/data.json';
   const text = await fetchCardCsv(CARD_ID);
   const raw = parseCSV(text);
-  rawHeaders = raw.length ? Object.keys(raw[0]) : [];
-  rawSample = raw.slice(0, 3);
 
-  cache = raw.map(r => ({
+  const rows = raw.map(r => ({
     eid:  pickField(r, ['enterprise_id', 'Enterprise_ID']),
     ent:  pickField(r, ['enterprise_name', 'Enterprise_Name']),
     tid:  pickField(r, ['team_id', 'Team_ID']),
@@ -137,34 +135,15 @@ async function loadRows() {
     vp:   String(pickField(r, ['Video_Processed', 'video_processed'])).trim() === '1' ? 1 : 0,
     c:    normDate(pickField(r, ['created_on', 'Created_On', 'Created_ON'])),
   }));
-  lastFetch = Date.now();
-  return cache;
+
+  fs.mkdirSync(path.dirname(out), { recursive: true });
+  fs.writeFileSync(out, JSON.stringify({ rows, count: rows.length, lastSynced: new Date().toISOString() }));
+
+  // Sanity summary in the Action log.
+  console.log(`Wrote ${rows.length} rows to ${out}`);
+  console.log('Raw headers:', raw.length ? Object.keys(raw[0]).join(', ') : '(none)');
+  console.log(`Rows with a created_on date: ${rows.filter(r => r.c).length}; Video_Processed = 1: ${rows.filter(r => r.vp === 1).length}`);
+  if (!rows.length) throw new Error('Metabase returned no rows; keeping the previous deploy');
 }
 
-export default async function handler(req, res) {
-  try {
-    if (req.query.force === '1') { cache = null; lastFetch = 0; }
-    const rows = await loadRows();
-
-    if (req.query.debug === '1') {
-      return res.status(200).json({
-        count: rows.length,
-        rawHeaders,
-        rowsWithDate: rows.filter(r => r.c).length,
-        videoProcessed1: rows.filter(r => r.vp === 1).length,
-        sample: rows.slice(0, 3),
-        rawSample,
-      });
-    }
-
-    res.setHeader('Cache-Control', 'no-store');
-    res.status(200).json({
-      rows,
-      count: rows.length,
-      lastSynced: new Date(lastFetch).toISOString(),
-    });
-  } catch (err) {
-    console.error('[data.js]', err);
-    res.status(500).json({ error: err.message });
-  }
-}
+main().catch(err => { console.error(err); process.exit(1); });
