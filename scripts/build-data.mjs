@@ -128,8 +128,8 @@ function normDate(s) {
 // Compact, columnar encoding (the model has ~1M rows; plain objects were ~150 MB).
 //   teams:  [[enterprise_id, enterprise_name, team_id, team_name], ...]
 //   teamMeta: [[stage, sub_stage, [products]], ...] aligned with teams, from each team's latest row
-//   crm/src/vqc/reg: distinct values
-//   combos: [[teamIdx, crmIdx, srcIdx, vqcIdx, Video_Processed, regIdx], ...]
+//   crm/src/vqc/reg/seg: distinct values
+//   combos: [[teamIdx, crmIdx, srcIdx, vqcIdx, Video_Processed, regIdx, segIdx], ...]
 //   rows sorted by VIN, then team_id; three parallel columns:
 //     k: combo index, d: created_on as days since 1970-01-01 (-1 = no date),
 //     v: VIN id delta from the previous row (VIN ids are 0..vins-1 in sorted order)
@@ -137,7 +137,7 @@ function normDate(s) {
 // line N+2) that the page only downloads when someone opens a drill-down.
 function encode(rows) {
   const dict = () => { const m = new Map(), list = []; return { list, id: (key, val) => { let i = m.get(key); if (i === undefined) { i = list.length; m.set(key, i); list.push(val); } return i; } }; };
-  const teams = dict(), crm = dict(), src = dict(), vqc = dict(), reg = dict(), combos = dict();
+  const teams = dict(), crm = dict(), src = dict(), vqc = dict(), reg = dict(), seg = dict(), combos = dict();
   const dayOf = c => c ? Math.round(Date.UTC(+c.slice(0, 4), +c.slice(5, 7) - 1, +c.slice(8, 10)) / 864e5) : -1;
 
   // Sorted by VIN, then team: the page counts a VIN once per rooftop (team) by
@@ -150,14 +150,14 @@ function encode(rows) {
     if (r.vin !== prevVin) { vinId++; prevVin = r.vin; vinList.push(r.vin); }
     const t = teams.id(r.eid + '\u0000' + r.tid, [r.eid, r.ent, r.tid, r.team]);
     if (!meta[t] || r.c >= meta[t].c) meta[t] = { c: r.c, m: [r.stage, r.sub, [...new Set(r.prod)].sort()] };
-    const combo = [t, crm.id(r.crm, r.crm), src.id(r.src, r.src), vqc.id(r.vqc, r.vqc), r.vp, reg.id(r.reg, r.reg)];
+    const combo = [t, crm.id(r.crm, r.crm), src.id(r.src, r.src), vqc.id(r.vqc, r.vqc), r.vp, reg.id(r.reg, r.reg), seg.id(r.seg, r.seg)];
     k.push(combos.id(combo.join(','), combo));
     d.push(dayOf(r.c));
     v.push(vinId - prevId); prevId = vinId;
   }
   const data = {
     lastSynced: new Date().toISOString(), count: rows.length, vins: vinId + 1,
-    teams: teams.list, teamMeta: meta.map(x => x.m), crm: crm.list, src: src.list, vqc: vqc.list, reg: reg.list, combos: combos.list, k, d, v,
+    teams: teams.list, teamMeta: meta.map(x => x.m), crm: crm.list, src: src.list, vqc: vqc.list, reg: reg.list, seg: seg.list, combos: combos.list, k, d, v,
   };
   return { data, vinList };
 }
@@ -179,6 +179,7 @@ async function main() {
     vp:   String(pickField(r, ['Video_Processed', 'video_processed'])).trim() === '1' ? 1 : 0,
     c:    normDate(pickField(r, ['created_on', 'Created_On', 'Created_ON'])),
     reg:   pickField(r, ['region', 'Region']),
+    seg:   pickField(r, ['Customer Segment', 'customer_segment', 'Customer_Segment', 'customer segment', 'CustomerSegment', 'segment']),
     stage: pickField(r, ['stage', 'Stage']),
     sub:   pickField(r, ['sub_stage', 'Sub_Stage', 'substage']),
     prod:  parseProducts(pickField(r, ['products', 'Products'])),
@@ -192,6 +193,7 @@ async function main() {
   // Sanity summary in the Action log.
   console.log(`Wrote ${rows.length} rows (${data.vins} unique VINs, ${data.combos.length} combos) to ${out}: ${(fs.statSync(out).size / 1e6).toFixed(1)} MB`);
   console.log('Raw headers:', raw.length ? Object.keys(raw[0]).join(', ') : '(none)');
+  console.log('Customer segments:', [...new Set(rows.map(r => r.seg))].join(', ') || '(none; check the column name)');
   console.log(`Rows with a created_on date: ${rows.filter(r => r.c).length}; Video_Processed = 1: ${rows.filter(r => r.vp === 1).length}`);
   if (!rows.length) throw new Error('Metabase returned no rows; keeping the previous deploy');
 }

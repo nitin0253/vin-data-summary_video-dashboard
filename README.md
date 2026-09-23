@@ -26,16 +26,20 @@ A **Summary / Report** switch at the top centre of the header (also `#summary` /
 use the same filters.
 
 - **Summary**: KPI cards, source/region cards, breakdown table.
-- **Report**: three rows of three cards:
-  - **VIN level**: total VINs, QC on VINs, video processed VINs (VIN per rooftop).
+- **Report**: five rows of three cards (total / QC on / video processed), in this order:
   - **Enterprise level**: enterprises with any VIN / with a QC-on VIN / with a processed VIN.
   - **Rooftop (team) level**: the same counts for rooftops.
+  - **VIN level**: total VINs, QC on VINs, video processed VINs (VIN per rooftop).
+  - **ENT customer segment**: VIN counts where `Customer Segment` = Ent, with the enterprise and rooftop spread under each card.
+  - **AMER region**: the same for `region` = AMER.
+
+  The ENT and AMER rows also respect every filter (e.g. Region = EMEA makes the AMER row 0).
 
   Clicking a VIN card opens the VIN list. Clicking an enterprise or rooftop card opens a sortable list with VINs,
   QC on and processed counts and percentages, plus CSV download.
 
 ## Cards and breakdown
-- **Source and Region cards** (below the KPIs): unique VINs per value and each value's share. They're counted under every
+- **Source, Region and Customer segment cards** (below the KPIs): unique VINs per value and each value's share. They're counted under every
   filter except their own dimension. Clicking a card toggles that filter.
 - **Breakdown table**: Stage (with sub-stage) and Products per team, taken from the team's latest row. An enterprise row
   shows every value found across its teams.
@@ -50,7 +54,7 @@ VIN strings live in `vins.txt`, which is downloaded only when a drill-down is fi
 
 ## Filters
 Date on `created_on` (All time, Today, Yesterday, This week, Last week, This month (default), Last month, Last 30 days, Custom),
-Enterprise, Team, `crm_status`, `video_qualityCheck`, `source`, `region`. All of them are multi-select, and each list only shows
+Enterprise, Team, `crm_status`, `video_qualityCheck`, `source`, `region`, `Customer Segment`. All of them are multi-select, and each list only shows
 values that match the other active filters.
 
 ## Setup (one time)

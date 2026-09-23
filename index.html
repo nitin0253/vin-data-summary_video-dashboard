@@ -46,7 +46,7 @@
   .filters{background:var(--surface);border-bottom:1px solid var(--line);padding:10px 28px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;box-shadow:0 2px 10px var(--shadow);}
   .f-group{display:flex;flex-direction:column;gap:4px;position:relative;}
   .f-label{font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);}
-  .trigger{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:400 13px 'Inter';color:var(--ink);cursor:pointer;min-width:160px;max-width:240px;user-select:none;white-space:nowrap;}
+  .trigger{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:400 13px 'Inter';color:var(--ink);cursor:pointer;min-width:136px;max-width:220px;user-select:none;white-space:nowrap;}
   .trigger:hover,.trigger.open{border-color:var(--accent);}
   .trigger .t-text{flex:1;overflow:hidden;text-overflow:ellipsis;}
   .trigger.active .t-text{color:var(--accent);font-weight:500;}
@@ -229,7 +229,7 @@
 // D is the decoded data.json (see scripts/build-data.mjs → encode()):
 // dictionaries + one entry per row in three typed arrays K (combo), DAY, VIN.
 let D = null;
-const F = { preset:'this_month', from:null, to:null, ent:null, team:null, crm:null, vqc:null, src:null, reg:null };
+const F = { preset:'this_month', from:null, to:null, ent:null, team:null, crm:null, vqc:null, src:null, reg:null, seg:null };
 let groupBy = 'ent';
 let VIEW = location.hash === '#report' ? 'report' : 'summary';
 const sort = { col:'vins', dir:'desc' };
@@ -241,6 +241,7 @@ const FILTERS = [
   { key:'vqc',  label:'Video QC',       all:'All' },
   { key:'src',  label:'Source',         all:'All sources' },
   { key:'reg',  label:'Region',         all:'All regions' },
+  { key:'seg',  label:'Customer segment', all:'All segments' },
 ];
 
 // ─────────────────────────────────────────────────────────────
@@ -307,12 +308,12 @@ function decode(j){
   for (let i = 0; i < n; i++){ v += j.v[i]; VIN[i] = v; }
   const entIdx = new Map(), ents = [];
   for (const t of j.teams) if (!entIdx.has(t[0])){ entIdx.set(t[0], ents.length); ents.push({ id:t[0], name:t[1] || t[0] || '(blank)' }); }
-  const cv = { ent:[], team:[], crm:[], src:[], vqc:[], reg:[] }, cTeam = [], cEnt = [], cVp = [], cSrc = [], cReg = [], cQc = [];
-  const regs = j.reg || [''];
-  for (const [t, c, s, q, vp, rg = 0] of j.combos){
+  const cv = { ent:[], team:[], crm:[], src:[], vqc:[], reg:[], seg:[] }, cTeam = [], cEnt = [], cVp = [], cSrc = [], cReg = [], cSeg = [], cQc = [];
+  const regs = j.reg || [''], segs = j.seg || [''];
+  for (const [t, c, s, q, vp, rg = 0, sg = 0] of j.combos){
     const team = j.teams[t];
-    cv.ent.push(team[0]); cv.team.push(team[2]); cv.crm.push(j.crm[c]); cv.src.push(j.src[s]); cv.vqc.push(j.vqc[q]); cv.reg.push(regs[rg] ?? '');
-    cTeam.push(t); cEnt.push(entIdx.get(team[0])); cVp.push(vp); cSrc.push(s); cReg.push(rg); cQc.push(j.vqc[q] === '1' ? 1 : 0);
+    cv.ent.push(team[0]); cv.team.push(team[2]); cv.crm.push(j.crm[c]); cv.src.push(j.src[s]); cv.vqc.push(j.vqc[q]); cv.reg.push(regs[rg] ?? ''); cv.seg.push(segs[sg] ?? '');
+    cTeam.push(t); cEnt.push(entIdx.get(team[0])); cVp.push(vp); cSrc.push(s); cReg.push(rg); cSeg.push(sg); cQc.push(j.vqc[q] === '1' ? 1 : 0);
   }
   // U = one id per (VIN, rooftop/team). A VIN uploaded under two rooftops counts
   // twice; repeated rows for the same VIN in the same rooftop count once. Rows
@@ -323,7 +324,7 @@ function decode(j){
     if (VIN[i] !== pv || t !== pt){ u++; pv = VIN[i]; pt = t; }
     U[i] = u;
   }
-  return { n, K, DAY, VIN, U, teams:j.teams, teamMeta:j.teamMeta || [], ents, srcs:j.src, regs, cv, cTeam, cEnt, cVp, cSrc, cReg, cQc, nc:j.combos.length, lastSynced:j.lastSynced };
+  return { n, K, DAY, VIN, U, teams:j.teams, teamMeta:j.teamMeta || [], ents, srcs:j.src, regs, segs, cv, cTeam, cEnt, cVp, cSrc, cReg, cSeg, cQc, nc:j.combos.length, lastSynced:j.lastSynced };
 }
 
 function comboOk(skip){
@@ -478,6 +479,7 @@ function buildDateUI(){
 const CARD_DIMS = [
   { key:'src', all:'All sources', aria:'Unique VINs by source', values: () => D.srcs, of: c => D.cSrc[c] },
   { key:'reg', all:'All regions', aria:'Unique VINs by region', values: () => D.regs, of: c => D.cReg[c] },
+  { key:'seg', all:'All segments', aria:'Unique VINs by customer segment', values: () => D.segs, of: c => D.cSeg[c] },
 ];
 function dimStats(dim){
   const ok = comboOk(dim.key), { any, lo, hi } = dayBounds();
@@ -674,9 +676,12 @@ function render(){
 // ─────────────────────────────────────────────────────────────
 // Per-rooftop counts of VIN units (U = VIN × rooftop), all / QC on / processed,
 // under the current filters. A unit belongs to exactly one team, so enterprise
-// totals are sums of their teams.
-function teamTotals(){
+// totals are sums of their teams. `slice` (optional) narrows to one value of a
+// dimension on top of the filters, e.g. { key:'reg', v:'AMER' }.
+const inSlice = (slice, c) => !slice || String(D.cv[slice.key][c]).toLowerCase() === slice.v.toLowerCase();
+function teamTotals(slice){
   const ok = comboOk(null), { any, lo, hi } = dayBounds();
+  if (slice) for (let c = 0; c < D.nc; c++) if (!inSlice(slice, c)) ok[c] = 0;
   const { K, DAY, U, n, cTeam, cVp, cQc } = D, nt = D.teams.length;
   const all = new Int32Array(nt), qc = new Int32Array(nt), vp = new Int32Array(nt);
   let last = -1, lastQc = -1, lastVp = -1;
@@ -705,6 +710,12 @@ function entityRows(level, T){
   return m.filter(e => e.all);
 }
 
+// Fixed slices shown as their own report rows.
+const REPORT_SLICES = {
+  ent_seg: { key:'seg', v:'Ent',  title:'ENT customer segment report', label:'ENT' },
+  amer:    { key:'reg', v:'AMER', title:'AMER region report',          label:'AMER' },
+};
+
 function renderReport(){
   const T = teamTotals();
   const sum = a => a.reduce((x, y) => x + y, 0), cnt = a => a.reduce((x, y) => x + (y > 0 ? 1 : 0), 0);
@@ -723,11 +734,18 @@ function renderReport(){
     </div>`;
   const row = (title, note, cards) => `<section class="rep-row"><div class="rep-head"><h2>${title}</h2><span>${note}</span></div><div class="rep-cards">${cards}</div></section>`;
 
+  // Slice rows: VIN counts inside the slice, with its enterprise / rooftop spread underneath.
+  const sliceRow = id => {
+    const sl = REPORT_SLICES[id], S = teamTotals(sl), E = entityRows('ent', S);
+    const v = { all:sum(S.all), qc:sum(S.qc), vp:sum(S.vp) };
+    const spread = m => `${fmt(E.filter(e => e[m]).length)} enterprises · ${fmt(cnt(S[m]))} rooftops`;
+    return row(sl.title, `${esc(rangeLabel())} · ${esc(FILTERS.find(f => f.key === sl.key).label)} = ${esc(sl.label)} · VINs counted per rooftop`,
+      card(id, 'all', `Total ${sl.label} VIN count`, v.all, v.all, () => `${spread('all')} · ${pct(v.all, vin.all)} of all VINs`) +
+      card(id, 'qc', `QC on ${sl.label} VIN count`, v.qc, v.all, p => `${spread('qc')} · ${p} of ${sl.label} VINs`) +
+      card(id, 'vp', `Video processed ${sl.label} VIN count`, v.vp, v.all, p => `${spread('vp')} · ${p} of ${sl.label} VINs`));
+  };
+
   $('content').innerHTML =
-    row('VIN level report', `${esc(rangeLabel())} · VINs counted per rooftop`,
-      card('vin', 'all', 'Total VIN count', vin.all, vin.all, () => `${fmt(team.all)} rooftops · ${fmt(ent.all)} enterprises`) +
-      card('vin', 'qc', 'QC on count', vin.qc, vin.all, p => `video_qualityCheck = 1 · ${p} of VINs`) +
-      card('vin', 'vp', 'Video processed count', vin.vp, vin.all, p => `Video_Processed = 1 · ${p} of VINs`)) +
     row('Enterprise level report', 'Enterprises with at least one matching VIN',
       card('ent', 'all', "Total VIN's enterprise count", ent.all, ent.all, () => `enterprises with any VIN`) +
       card('ent', 'qc', "QC on VIN's enterprise count", ent.qc, ent.all, p => `${p} of enterprises`) +
@@ -735,12 +753,18 @@ function renderReport(){
     row('Rooftop (team) level report', 'Rooftops with at least one matching VIN',
       card('team', 'all', "Total VIN's rooftop count", team.all, team.all, () => `rooftops with any VIN`) +
       card('team', 'qc', "QC on VIN's rooftop count", team.qc, team.all, p => `${p} of rooftops`) +
-      card('team', 'vp', "Video processed's rooftop count", team.vp, team.all, p => `${p} of rooftops`));
+      card('team', 'vp', "Video processed's rooftop count", team.vp, team.all, p => `${p} of rooftops`)) +
+    row('VIN level report', `${esc(rangeLabel())} · VINs counted per rooftop`,
+      card('vin', 'all', 'Total VIN count', vin.all, vin.all, () => `${fmt(team.all)} rooftops · ${fmt(ent.all)} enterprises`) +
+      card('vin', 'qc', 'QC on count', vin.qc, vin.all, p => `video_qualityCheck = 1 · ${p} of VINs`) +
+      card('vin', 'vp', 'Video processed count', vin.vp, vin.all, p => `Video_Processed = 1 · ${p} of VINs`)) +
+    sliceRow('ent_seg') +
+    sliceRow('amer');
 
   document.querySelectorAll('.rep-row .kpi').forEach(el => {
     const go = () => {
       const { level, mode } = el.dataset;
-      if (level === 'vin') openDrill({ qcOnly: mode === 'qc', vpOnly: mode === 'vp' });
+      if (level === 'vin' || REPORT_SLICES[level]) openDrill({ qcOnly: mode === 'qc', vpOnly: mode === 'vp', slice: REPORT_SLICES[level] || null });
       else openEntityList(level, mode, T);
     };
     el.onclick = go;
@@ -810,7 +834,7 @@ async function loadVins(){
 
 const DRILL_COLS = [
   ['VIN (sku_name)', r => r.vin], ['Enterprise', r => r.ent], ['Team', r => r.team],
-  ['CRM status', r => r.crm], ['Source', r => r.src], ['Region', r => r.reg], ['Video QC', r => r.vqc],
+  ['CRM status', r => r.crm], ['Source', r => r.src], ['Region', r => r.reg], ['Customer segment', r => r.seg], ['Video QC', r => r.vqc],
   ['Video processed', r => r.vp], ['Created on', r => r.day],
 ];
 const PRODUCT_LABEL = { threeSixty:'360', image:'Image', video:'Video', advanceTools:'Advance tools', inventory:'Inventory', website:'Website' };
@@ -818,7 +842,7 @@ const prodLabel = p => PRODUCT_LABEL[p] || p;
 const distinct = arr => [...new Set(arr.filter(Boolean))];
 const dayStr = d => d < 0 ? '' : new Date(d * 864e5).toISOString().slice(0, 10);
 
-function collectRows(group, vpOnly, qcOnly){
+function collectRows(group, vpOnly, qcOnly, slice){
   const ok = comboOk(null), { any, lo, hi } = dayBounds();
   const { K, DAY, n, cTeam, cEnt, cVp, cQc } = D, out = [];
   for (let i = 0; i < n; i++){
@@ -826,6 +850,7 @@ function collectRows(group, vpOnly, qcOnly){
     if (!ok[c]) continue;
     if (vpOnly && cVp[c] !== 1) continue;
     if (qcOnly && cQc[c] !== 1) continue;
+    if (slice && !inSlice(slice, c)) continue;
     if (group && (group.type === 'team' ? cTeam[c] : cEnt[c]) !== group.g) continue;
     if (!any){ const d = DAY[i]; if (d < 0 || d < lo || d > hi) continue; }
     out.push(i);
@@ -836,7 +861,7 @@ function collectRows(group, vpOnly, qcOnly){
 
 function rowRec(i){
   const c = D.K[i], t = D.teams[D.cTeam[c]];
-  return { vin: VINS[D.VIN[i]], ent: t[1] || t[0], team: t[3] || t[2], crm: D.cv.crm[c], src: D.cv.src[c], reg: D.cv.reg[c],
+  return { vin: VINS[D.VIN[i]], ent: t[1] || t[0], team: t[3] || t[2], crm: D.cv.crm[c], src: D.cv.src[c], reg: D.cv.reg[c], seg: D.cv.seg[c],
            vqc: vqcLabel(D.cv.vqc[c]), vp: D.cVp[c] === 1 ? 'Yes' : 'No', day: dayStr(D.DAY[i]) };
 }
 
@@ -877,15 +902,15 @@ function downloadCsv(title, header, rows){
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 
-async function openDrill({ group = null, vpOnly = false, qcOnly = false }){
-  const title = (vpOnly ? 'Processed VINs' : qcOnly ? 'QC-on VINs' : 'VINs') + (group ? ` · ${group.name}` : '');
+async function openDrill({ group = null, vpOnly = false, qcOnly = false, slice = null }){
+  const title = (slice ? slice.label + ' ' : '') + (vpOnly ? 'Processed VINs' : qcOnly ? 'QC-on VINs' : 'VINs') + (group ? ` · ${group.name}` : '');
   const ov = modalShell(title, 'Loading…', 'Search VIN, enterprise, team, status, source…');
   ov.querySelector('#dmBody').innerHTML = '<div class="state">Loading VIN list…</div>';
 
   try { await loadVins(); }
   catch (err){ ov.querySelector('#dmBody').innerHTML = `<div class="state err">Couldn't load VINs: ${esc(err.message)}</div>`; return; }
 
-  const idx = collectRows(group, vpOnly, qcOnly);
+  const idx = collectRows(group, vpOnly, qcOnly, slice);
   const recs = idx.map(rowRec);
   const vinCount = new Set(idx.map(i => D.U[i])).size;
   ov.querySelector('#dmSub').textContent = `${fmt(vinCount)} VINs · ${fmt(recs.length)} rows · ${filterScope()}`;
@@ -906,7 +931,7 @@ async function openDrill({ group = null, vpOnly = false, qcOnly = false }){
       <thead><tr>${DRILL_COLS.map(([h], i) => `<th data-c="${i}">${h}${arrow(i)}</th>`).join('')}</tr></thead>
       <tbody>${shown.slice(0, LIMIT).map(r => `<tr>
         <td class="mono">${esc(r.vin)}</td><td>${esc(r.ent)}</td><td>${esc(r.team)}</td>
-        <td>${esc(r.crm)}</td><td>${esc(r.src)}</td><td>${esc(r.reg)}</td><td>${esc(r.vqc)}</td>
+        <td>${esc(r.crm)}</td><td>${esc(r.src)}</td><td>${esc(r.reg)}</td><td>${esc(r.seg)}</td><td>${esc(r.vqc)}</td>
         <td><span class="pill ${r.vp === 'Yes' ? 'yes' : ''}">${r.vp}</span></td><td class="mono">${r.day}</td>
       </tr>`).join('')}</tbody></table>` : '<div class="state">No rows match.</div>';
     ov.querySelectorAll('#dmBody th[data-c]').forEach(th => th.onclick = () => {
