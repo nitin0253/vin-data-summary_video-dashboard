@@ -118,6 +118,35 @@ function normDate(s) {
   return '';
 }
 
+// Compact, columnar encoding (the model has ~1M rows; plain objects were ~150 MB).
+//   teams:  [[enterprise_id, enterprise_name, team_id, team_name], ...]
+//   crm/src/vqc: distinct values
+//   combos: [[teamIdx, crmIdx, srcIdx, vqcIdx, Video_Processed], ...]
+//   rows sorted by VIN; three parallel columns:
+//     k: combo index, d: created_on as days since 1970-01-01 (-1 = no date),
+//     v: VIN id delta from the previous row (VIN ids are 0..vins-1 in sorted order)
+function encode(rows) {
+  const dict = () => { const m = new Map(), list = []; return { list, id: (key, val) => { let i = m.get(key); if (i === undefined) { i = list.length; m.set(key, i); list.push(val); } return i; } }; };
+  const teams = dict(), crm = dict(), src = dict(), vqc = dict(), combos = dict();
+  const dayOf = c => c ? Math.round(Date.UTC(+c.slice(0, 4), +c.slice(5, 7) - 1, +c.slice(8, 10)) / 864e5) : -1;
+
+  const sorted = rows.slice().sort((a, b) => a.vin < b.vin ? -1 : a.vin > b.vin ? 1 : 0);
+  const k = [], d = [], v = [];
+  let vinId = -1, prevVin = null, prevId = 0;
+  for (const r of sorted) {
+    if (r.vin !== prevVin) { vinId++; prevVin = r.vin; }
+    const t = teams.id(r.eid + '\u0000' + r.tid, [r.eid, r.ent, r.tid, r.team]);
+    const combo = [t, crm.id(r.crm, r.crm), src.id(r.src, r.src), vqc.id(r.vqc, r.vqc), r.vp];
+    k.push(combos.id(combo.join(','), combo));
+    d.push(dayOf(r.c));
+    v.push(vinId - prevId); prevId = vinId;
+  }
+  return {
+    lastSynced: new Date().toISOString(), count: rows.length, vins: vinId + 1,
+    teams: teams.list, crm: crm.list, src: src.list, vqc: vqc.list, combos: combos.list, k, d, v,
+  };
+}
+
 async function main() {
   const out = process.argv[2] || '_site/data.json';
   const text = await fetchCardCsv(CARD_ID);
@@ -136,11 +165,12 @@ async function main() {
     c:    normDate(pickField(r, ['created_on', 'Created_On', 'Created_ON'])),
   }));
 
+  const data = encode(rows);
   fs.mkdirSync(path.dirname(out), { recursive: true });
-  fs.writeFileSync(out, JSON.stringify({ rows, count: rows.length, lastSynced: new Date().toISOString() }));
+  fs.writeFileSync(out, JSON.stringify(data));
 
   // Sanity summary in the Action log.
-  console.log(`Wrote ${rows.length} rows to ${out}`);
+  console.log(`Wrote ${rows.length} rows (${data.vins} unique VINs, ${data.combos.length} combos) to ${out}: ${(fs.statSync(out).size / 1e6).toFixed(1)} MB`);
   console.log('Raw headers:', raw.length ? Object.keys(raw[0]).join(', ') : '(none)');
   console.log(`Rows with a created_on date: ${rows.filter(r => r.c).length}; Video_Processed = 1: ${rows.filter(r => r.vp === 1).length}`);
   if (!rows.length) throw new Error('Metabase returned no rows; keeping the previous deploy');

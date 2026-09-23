@@ -167,7 +167,9 @@
 // ─────────────────────────────────────────────────────────────
 // STATE
 // ─────────────────────────────────────────────────────────────
-let ROWS = [];
+// D is the decoded data.json (see scripts/build-data.mjs → encode()):
+// dictionaries + one entry per row in three typed arrays K (combo), DAY, VIN.
+let D = null;
 const F = { preset:'this_month', from:null, to:null, ent:null, team:null, crm:null, vqc:null, src:null };
 let groupBy = 'ent';
 const sort = { col:'vins', dir:'desc' };
@@ -227,56 +229,75 @@ function rangeLabel(){
   return `${F.from ? fmtDay(F.from) : '…'} – ${F.to ? fmtDay(F.to) : '…'}`;
 }
 
-// Row date strings are "YYYY-MM-DDTHH:mm"; compare on the day part.
-function inRange(c){
-  if (!F.from && !F.to) return true;
-  if (!c) return false;
-  const day = c.slice(0, 10);
-  if (F.from && day < toISO(F.from)) return false;
-  if (F.to && day > toISO(F.to)) return false;
-  return true;
+// Rows carry created_on as days since 1970-01-01 (-1 = no date).
+const dayNum = d => Math.round(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 864e5);
+function dayBounds(){
+  return { any: !F.from && !F.to, lo: F.from ? dayNum(F.from) : -Infinity, hi: F.to ? dayNum(F.to) : Infinity };
 }
 
 // ─────────────────────────────────────────────────────────────
 // FILTERING
 // ─────────────────────────────────────────────────────────────
-const valOf = (r, key) => key === 'ent' ? r.eid : key === 'team' ? r.tid : (r[key] || '');
-
-function passes(r, skip){
-  if (!inRange(r.c)) return false;
-  for (const { key } of FILTERS){
-    if (key === skip) continue;
-    if (F[key] && !F[key].has(valOf(r, key))) return false;
+// Every combo (team × crm × source × video QC × processed) is checked once
+// against the non-date filters; rows then only need a lookup + a date check.
+function decode(j){
+  const n = j.k.length, K = Int32Array.from(j.k), DAY = Int32Array.from(j.d), VIN = new Int32Array(n);
+  let v = 0;
+  for (let i = 0; i < n; i++){ v += j.v[i]; VIN[i] = v; }
+  const entIdx = new Map(), ents = [];
+  for (const t of j.teams) if (!entIdx.has(t[0])){ entIdx.set(t[0], ents.length); ents.push({ id:t[0], name:t[1] || t[0] || '(blank)' }); }
+  const cv = { ent:[], team:[], crm:[], src:[], vqc:[] }, cTeam = [], cEnt = [], cVp = [];
+  for (const [t, c, s, q, vp] of j.combos){
+    const team = j.teams[t];
+    cv.ent.push(team[0]); cv.team.push(team[2]); cv.crm.push(j.crm[c]); cv.src.push(j.src[s]); cv.vqc.push(j.vqc[q]);
+    cTeam.push(t); cEnt.push(entIdx.get(team[0])); cVp.push(vp);
   }
-  return true;
+  return { n, K, DAY, VIN, teams:j.teams, ents, cv, cTeam, cEnt, cVp, nc:j.combos.length, lastSynced:j.lastSynced };
+}
+
+function comboOk(skip){
+  const ok = new Uint8Array(D.nc);
+  for (let c = 0; c < D.nc; c++){
+    let pass = 1;
+    for (const { key } of FILTERS){
+      if (key !== skip && F[key] && !F[key].has(D.cv[key][c])){ pass = 0; break; }
+    }
+    ok[c] = pass;
+  }
+  return ok;
+}
+
+// Rows per combo that pass every filter except `skip` (and always the date range).
+function comboCounts(skip){
+  const ok = comboOk(skip), cnt = new Int32Array(D.nc), { any, lo, hi } = dayBounds();
+  const { K, DAY, n } = D;
+  for (let i = 0; i < n; i++){
+    const c = K[i];
+    if (!ok[c]) continue;
+    if (!any){ const d = DAY[i]; if (d < 0 || d < lo || d > hi) continue; }
+    cnt[c]++;
+  }
+  return cnt;
 }
 
 // Options for a filter come from rows matching every OTHER filter,
 // so e.g. Team only lists teams of the selected enterprises.
 function optionsFor(key){
-  const m = new Map();
-  for (const r of ROWS){
-    if (!passes(r, key)) continue;
-    const v = valOf(r, key);
+  const cnt = comboCounts(key), m = new Map();
+  for (let c = 0; c < D.nc; c++){
+    if (!cnt[c]) continue;
+    const v = D.cv[key][c];
     let o = m.get(v);
-    if (!o){
-      o = { v, n:0,
-        name: key === 'ent' ? (r.ent || r.eid || '(blank)')
-            : key === 'team' ? (r.team || r.tid || '(blank)')
-            : key === 'vqc' ? vqcLabel(v) : (v || '(blank)'),
-        sub: key === 'team' ? r.ent : '' };
-      m.set(v, o);
-    }
-    o.n++;
+    if (!o){ o = { v, n:0, name: labelFor(key, v), sub: key === 'team' ? D.ents[D.cEnt[c]].name : '' }; m.set(v, o); }
+    o.n += cnt[c];
   }
   // Keep selected values visible even if they currently match nothing.
   if (F[key]) for (const v of F[key]) if (!m.has(v)) m.set(v, { v, n:0, name: labelFor(key, v), sub:'' });
   return [...m.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
 }
 function labelFor(key, v){
-  const r = ROWS.find(x => valOf(x, key) === v);
-  if (key === 'ent') return r?.ent || v;
-  if (key === 'team') return r?.team || v;
+  if (key === 'ent') return D.ents.find(e => e.id === v)?.name || v || '(blank)';
+  if (key === 'team'){ const t = D.teams.find(t => t[2] === v); return (t && t[3]) || v || '(blank)'; }
   if (key === 'vqc') return vqcLabel(v);
   return v || '(blank)';
 }
@@ -318,6 +339,7 @@ function buildFilterUI(){
 }
 
 function renderOptions(key){
+  if (!D) return;
   const panel = document.querySelector(`.ms-panel[data-k="${key}"]`);
   const q = panel.querySelector('.ms-search').value.trim().toLowerCase();
   const opts = optionsFor(key).filter(o => !q || o.name.toLowerCase().includes(q) || (o.sub||'').toLowerCase().includes(q) || o.v.toLowerCase().includes(q));
@@ -386,20 +408,44 @@ function buildDateUI(){
 // RENDER
 // ─────────────────────────────────────────────────────────────
 function render(){
-  const rows = ROWS.filter(r => passes(r));
-  const ents = new Set(), teams = new Set(), vins = new Set(), vp = new Set();
-  const groups = new Map();
-  for (const r of rows){
-    ents.add(r.eid); teams.add(r.tid);
-    if (r.vin){ vins.add(r.vin); if (r.vp === 1) vp.add(r.vin); }
-    const gk = groupBy === 'ent' ? r.eid : r.tid;
-    let g = groups.get(gk);
-    if (!g){ g = { name: groupBy === 'ent' ? (r.ent || r.eid) : (r.team || r.tid), sub: groupBy === 'team' ? r.ent : '', teams:new Set(), vins:new Set(), vp:new Set() }; groups.set(gk, g); }
-    g.teams.add(r.tid);
-    if (r.vin){ g.vins.add(r.vin); if (r.vp === 1) g.vp.add(r.vin); }
+  if (!D) return;
+  // One pass over rows. Rows are sorted by VIN, so a VIN is new for a bucket
+  // whenever it differs from the last VIN that bucket saw.
+  const ok = comboOk(null), { any, lo, hi } = dayBounds();
+  const { K, DAY, VIN, n, cTeam, cEnt, cVp } = D;
+  const byTeam = groupBy === 'team';
+  const nG = byTeam ? D.teams.length : D.ents.length;
+  const gVins = new Int32Array(nG), gVp = new Int32Array(nG), gLast = new Int32Array(nG).fill(-1), gLastVp = new Int32Array(nG).fill(-1);
+  const comboHit = new Uint8Array(D.nc);
+  let rowsN = 0, vinsN = 0, vpN = 0, last = -1, lastVp = -1;
+  for (let i = 0; i < n; i++){
+    const c = K[i];
+    if (!ok[c]) continue;
+    if (!any){ const d = DAY[i]; if (d < 0 || d < lo || d > hi) continue; }
+    rowsN++; comboHit[c] = 1;
+    const v = VIN[i], g = byTeam ? cTeam[c] : cEnt[c];
+    if (v !== last){ vinsN++; last = v; }
+    if (v !== gLast[g]){ gVins[g]++; gLast[g] = v; }
+    if (cVp[c] === 1){
+      if (v !== lastVp){ vpN++; lastVp = v; }
+      if (v !== gLastVp[g]){ gVp[g]++; gLastVp[g] = v; }
+    }
   }
+  const ents = new Set(), teams = new Set(), gTeams = Array.from({ length:nG }, () => new Set());
+  for (let c = 0; c < D.nc; c++){
+    if (!comboHit[c]) continue;
+    ents.add(cEnt[c]); teams.add(cTeam[c]);
+    gTeams[byTeam ? cTeam[c] : cEnt[c]].add(cTeam[c]);
+  }
+  const groups = [];
+  for (let g = 0; g < nG; g++){
+    if (!gTeams[g].size) continue;
+    const t = byTeam ? D.teams[g] : null;
+    groups.push({ name: byTeam ? (t[3] || t[2] || '(blank)') : D.ents[g].name, sub: byTeam ? (t[1] || t[0]) : '', teams:gTeams[g], vins:gVins[g], vp:gVp[g] });
+  }
+  const vins = { size:vinsN }, vp = { size:vpN }, rows = { length:rowsN };
 
-  const list = [...groups.values()].map(g => ({ name:g.name, sub:g.sub, teams:g.teams.size, vins:g.vins.size, vp:g.vp.size, pct: g.vins.size ? g.vp.size / g.vins.size : 0 }));
+  const list = groups.map(g => ({ name:g.name, sub:g.sub, teams:g.teams.size, vins:g.vins, vp:g.vp, pct: g.vins ? g.vp / g.vins : 0 }));
   const dir = sort.dir === 'asc' ? 1 : -1;
   list.sort((a, b) => sort.col === 'name' ? dir * a.name.localeCompare(b.name) : dir * (a[sort.col] - b[sort.col]) || b.vins - a.vins);
   const maxV = Math.max(1, ...list.map(g => g.vins));
@@ -467,14 +513,13 @@ async function load(){
     // data.json is rebuilt from Metabase by the GitHub Action (.github/workflows/deploy.yml).
     const resp = await fetch('data.json?t=' + Date.now(), { cache:'no-store' });
     if (!resp.ok) throw new Error(`data.json not found (${resp.status}). Check that the "Deploy dashboard" GitHub Action has run.`);
-    const data = await resp.json();
-    ROWS = data.rows || [];
-    $('syncInfo').textContent = `Updated ${new Date(data.lastSynced).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })} · ${fmt(ROWS.length)} rows`;
+    D = decode(await resp.json());
+    $('syncInfo').textContent = `Updated ${new Date(D.lastSynced).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })} · ${fmt(D.n)} rows`;
     syncTriggers();
     render();
   } catch (err){
     $('syncInfo').textContent = 'Sync failed';
-    if (!ROWS.length) $('content').innerHTML = `<div class="state err">Couldn't load data: ${esc(err.message)}</div>`;
+    if (!D) $('content').innerHTML = `<div class="state err">Couldn't load data: ${esc(err.message)}</div>`;
   } finally {
     $('syncBtn').disabled = false;
   }

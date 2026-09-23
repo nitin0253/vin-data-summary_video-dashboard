@@ -7,7 +7,7 @@ Hosted on **GitHub Pages**; data is refreshed by a GitHub Action.
 
 - `index.html`: the dashboard. It reads `data.json`, and all filtering and KPIs are computed in the browser.
 - `scripts/build-data.mjs`: logs in to Metabase, runs the model as CSV
-  (`POST /api/card/13134/query/csv`) and writes `{rows, count, lastSynced}` to `data.json`.
+  (`POST /api/card/13134/query/csv`) and writes a compact columnar `data.json` (~9 MB, ~1 MB gzipped, for ~820k rows).
 - `.github/workflows/deploy.yml`: runs the script and publishes `index.html` + `data.json` to Pages
   every 15 minutes, on every push to `main`, and on demand (Actions → Deploy dashboard → Run workflow).
 
