@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<title>VIN Video Summary</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#f6f5f1;--surface:#ffffff;--surface-2:#fbfaf6;--ink:#0b0b0c;--ink-2:#404045;
+    --muted:#76767c;--line:#e8e6df;--line-2:#d6d3c8;--accent:#1f3f72;--green:#1f7a52;
+    --shadow:rgba(0,0,0,0.05);--shadow-lg:rgba(0,0,0,0.18);
+  }
+  [data-theme="dark"]{
+    --bg:#111113;--surface:#1c1c1f;--surface-2:#222226;--ink:#f0efe9;--ink-2:#b0b0b8;
+    --muted:#8a8a92;--line:#2a2a2f;--line-2:#34343a;--accent:#6b9eff;--green:#4ade80;
+    --shadow:rgba(0,0,0,0.3);--shadow-lg:rgba(0,0,0,0.6);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{font-family:'Inter',sans-serif;background:var(--bg);color:var(--ink);-webkit-font-smoothing:antialiased;font-size:14px;min-height:100vh;}
+  .mono{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums;}
+  button{font-family:inherit;}
+
+  /* HEADER */
+  #sticky-top{position:sticky;top:0;z-index:100;}
+  header{background:var(--surface);border-bottom:1px solid var(--line);padding:12px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  .brand{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;}
+  header h1{margin:0;font-family:'Bricolage Grotesque',serif;font-weight:600;font-size:22px;letter-spacing:-.025em;}
+  .tag{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;}
+  .actions{display:flex;align-items:center;gap:10px;}
+  .sync-info{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);}
+  .btn-icon{background:var(--surface);color:var(--ink-2);border:1px solid var(--line);padding:7px 12px;border-radius:6px;font:500 13px 'Inter';cursor:pointer;}
+  .btn-icon:hover{background:var(--bg);color:var(--ink);}
+  .btn-sync{background:var(--ink);color:var(--surface);border:none;padding:8px 16px;border-radius:6px;font:500 13px 'Inter';cursor:pointer;}
+  .btn-sync:hover{opacity:.82;}.btn-sync[disabled]{opacity:.45;cursor:wait;}
+
+  /* FILTERS */
+  .filters{background:var(--surface);border-bottom:1px solid var(--line);padding:10px 28px;display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;box-shadow:0 2px 10px var(--shadow);}
+  .f-group{display:flex;flex-direction:column;gap:4px;position:relative;}
+  .f-label{font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted);}
+  .trigger{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:400 13px 'Inter';color:var(--ink);cursor:pointer;min-width:160px;max-width:240px;user-select:none;white-space:nowrap;}
+  .trigger:hover,.trigger.open{border-color:var(--accent);}
+  .trigger .t-text{flex:1;overflow:hidden;text-overflow:ellipsis;}
+  .trigger.active .t-text{color:var(--accent);font-weight:500;}
+  .trigger .chev{opacity:.4;flex-shrink:0;transition:transform .2s;}
+  .trigger.open .chev{transform:rotate(180deg);}
+  .panel{display:none;position:absolute;top:calc(100% + 6px);left:0;z-index:600;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 8px 32px var(--shadow-lg);}
+  .panel.open{display:block;}
+  .ms-panel{width:300px;padding:8px;}
+  .ms-search{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:400 13px 'Inter';color:var(--ink);outline:none;}
+  .ms-search:focus{border-color:var(--accent);}
+  .ms-bulk{display:flex;justify-content:space-between;padding:6px 2px;}
+  .ms-bulk button{background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;padding:2px 4px;}
+  .ms-list{max-height:280px;overflow-y:auto;}
+  .ms-opt{display:flex;align-items:center;gap:8px;padding:6px 6px;border-radius:5px;cursor:pointer;font-size:13px;}
+  .ms-opt:hover{background:var(--bg);}
+  .ms-opt input{accent-color:var(--accent);margin:0;flex-shrink:0;}
+  .ms-opt .o-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .ms-opt .o-sub{color:var(--muted);font-size:11px;}
+  .ms-opt .o-n{color:var(--muted);font-size:11px;}
+  .ms-empty{padding:10px 6px;color:var(--muted);font-size:12px;}
+  .btn-reset{background:transparent;border:1px solid var(--line);padding:7px 14px;border-radius:6px;font-size:13px;cursor:pointer;color:var(--ink-2);height:34px;}
+  .btn-reset:hover{background:var(--bg);}
+
+  /* DATE PICKER */
+  .date-panel{display:none;min-width:520px;overflow:hidden;}
+  .date-panel.open{display:flex;}
+  .dp-presets{width:160px;flex-shrink:0;border-right:1px solid var(--line);padding:8px 0;background:var(--bg);}
+  .dp-preset{display:block;width:100%;text-align:left;padding:7px 14px;background:none;border:none;border-left:2px solid transparent;font:400 13px 'Inter';color:var(--ink-2);cursor:pointer;}
+  .dp-preset:hover{background:var(--surface);color:var(--ink);}
+  .dp-preset.sel{color:var(--accent);font-weight:500;border-left-color:var(--accent);background:var(--surface);}
+  .dp-body{flex:1;padding:14px 16px;display:flex;flex-direction:column;gap:12px;}
+  .dp-row{display:flex;gap:10px;}
+  .dp-row label{display:flex;flex-direction:column;gap:4px;flex:1;}
+  .dp-row input{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:7px 8px;font:400 13px 'Inter';color:var(--ink);color-scheme:light dark;}
+  .dp-preview{padding:8px 12px;background:var(--bg);border:1px solid var(--line);border-radius:6px;font-family:'JetBrains Mono',monospace;font-size:12px;}
+  .dp-apply{align-self:flex-end;background:var(--ink);color:var(--surface);border:none;padding:7px 16px;border-radius:6px;font:500 13px 'Inter';cursor:pointer;}
+
+  /* MAIN */
+  main{padding:24px 28px 48px;max-width:1400px;margin:0 auto;}
+  .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;}
+  .kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;box-shadow:0 1px 3px var(--shadow);}
+  .kpi-label{font-family:'JetBrains Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
+  .kpi-value{font-family:'Bricolage Grotesque',serif;font-weight:600;font-size:38px;letter-spacing:-.02em;margin-top:8px;line-height:1.1;font-variant-numeric:tabular-nums;}
+  .kpi-sub{font-size:12px;color:var(--muted);margin-top:6px;}
+  .kpi.accent .kpi-value{color:var(--green);}
+
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-top:18px;box-shadow:0 1px 3px var(--shadow);overflow:hidden;}
+  .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+  .card-head h2{margin:0;font-family:'Bricolage Grotesque',serif;font-weight:600;font-size:16px;}
+  .seg{display:inline-flex;background:var(--bg);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px;}
+  .seg button{background:none;border:none;padding:4px 12px;border-radius:999px;font-size:12px;color:var(--ink-2);cursor:pointer;}
+  .seg button.on{background:var(--surface);color:var(--ink);font-weight:500;box-shadow:0 1px 2px var(--shadow);}
+  .tbl-wrap{overflow-x:auto;max-height:560px;overflow-y:auto;}
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  th{position:sticky;top:0;background:var(--surface-2);text-align:left;font-family:'JetBrains Mono',monospace;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:500;padding:10px 16px;border-bottom:1px solid var(--line);cursor:pointer;white-space:nowrap;user-select:none;}
+  th.num,td.num{text-align:right;}
+  th .arr{opacity:.6;margin-left:4px;}
+  td{padding:9px 16px;border-bottom:1px solid var(--line);white-space:nowrap;}
+  td.sub{color:var(--muted);}
+  tbody tr:hover td{background:var(--bg);}
+  tfoot td{font-weight:600;background:var(--surface-2);position:sticky;bottom:0;}
+  .bar{display:inline-block;height:6px;border-radius:3px;background:var(--green);vertical-align:middle;margin-right:8px;opacity:.75;}
+
+  .state{padding:60px 20px;text-align:center;color:var(--muted);}
+  .state.err{color:#b3261e;}
+
+  @media(max-width:900px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  @media(max-width:600px){
+    #sticky-top{position:static;}
+    header,.filters,main{padding-left:16px;padding-right:16px;}
+    .kpi-value{font-size:30px;}
+    .f-group{flex:1 1 calc(50% - 10px);}
+    .trigger{min-width:0;max-width:none;width:100%;}
+    .panel{position:fixed;left:16px;right:16px;top:auto;width:auto;}
+    .ms-panel{width:auto;}
+    .date-panel{min-width:0;flex-direction:column;}
+    .dp-presets{width:100%;border-right:none;border-bottom:1px solid var(--line);display:flex;flex-wrap:wrap;}
+    .dp-preset{width:auto;border-left:none;}
+  }
+</style>
+</head>
+<body>
+<div id="sticky-top">
+  <header>
+    <div class="brand">
+      <h1>VIN Video Summary</h1>
+      <span class="tag">Metabase model 13134</span>
+    </div>
+    <div class="actions">
+      <span class="sync-info" id="syncInfo">Loading…</span>
+      <button class="btn-icon" id="themeBtn" title="Toggle theme">◐</button>
+      <button class="btn-sync" id="syncBtn">Sync</button>
+    </div>
+  </header>
+  <div class="filters" id="filters">
+    <div class="f-group">
+      <span class="f-label">Date (created on)</span>
+      <div class="trigger" id="dtTrigger"><span class="t-text" id="dtLabel">This month</span><span class="chev">▾</span></div>
+      <div class="panel date-panel" id="dtPanel">
+        <div class="dp-presets" id="dpPresets"></div>
+        <div class="dp-body">
+          <div class="dp-row">
+            <label><span class="f-label">From</span><input type="date" id="dpFrom"></label>
+            <label><span class="f-label">To</span><input type="date" id="dpTo"></label>
+          </div>
+          <div class="dp-preview" id="dpPreview"></div>
+          <button class="dp-apply" id="dpApply">Apply custom range</button>
+        </div>
+      </div>
+    </div>
+    <!-- multi-select filters are injected here -->
+    <button class="btn-reset" id="resetBtn">Reset</button>
+  </div>
+</div>
+
+<main>
+  <div id="content">
+    <div class="state">Loading data from Metabase…</div>
+  </div>
+</main>
+
+<script>
+// ─────────────────────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────────────────────
+let ROWS = [];
+const F = { preset:'this_month', from:null, to:null, ent:null, team:null, crm:null, vqc:null, src:null };
+let groupBy = 'ent';
+const sort = { col:'vins', dir:'desc' };
+
+const FILTERS = [
+  { key:'ent',  label:'Enterprise',     all:'All enterprises' },
+  { key:'team', label:'Team',           all:'All teams' },
+  { key:'crm',  label:'CRM status',     all:'All statuses' },
+  { key:'vqc',  label:'Video QC',       all:'All' },
+  { key:'src',  label:'Source',         all:'All sources' },
+];
+
+// ─────────────────────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt = n => n.toLocaleString('en-US');
+const vqcLabel = v => v === '1' ? 'QC on (1)' : v === '0' ? 'QC off (0)' : (v || '(blank)');
+const toISO = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const fmtDay = d => d.toLocaleDateString('en-GB', { day:'numeric', month:'short', year:'numeric' });
+
+// ─────────────────────────────────────────────────────────────
+// DATE PRESETS (weeks start Monday)
+// ─────────────────────────────────────────────────────────────
+const PRESETS = [
+  ['all','All time'],['today','Today'],['yesterday','Yesterday'],
+  ['this_week','This week'],['last_week','Last week'],
+  ['this_month','This month'],['last_month','Last month'],
+  ['last_30','Last 30 days'],['custom','Custom range'],
+];
+const PLABEL = Object.fromEntries(PRESETS);
+
+function presetRange(p){
+  const now = new Date(), tod = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const ago = n => { const d = new Date(tod); d.setDate(tod.getDate() - n); return d; };
+  const monday = () => { const day = tod.getDay(), d = new Date(tod); d.setDate(tod.getDate() + (day === 0 ? -6 : 1 - day)); return d; };
+  if (p === 'today')      return { from:tod, to:tod };
+  if (p === 'yesterday')  return { from:ago(1), to:ago(1) };
+  if (p === 'this_week')  return { from:monday(), to:tod };
+  if (p === 'last_week'){ const m = monday(), to = new Date(m); to.setDate(m.getDate() - 1); const fr = new Date(to); fr.setDate(to.getDate() - 6); return { from:fr, to }; }
+  if (p === 'this_month') return { from:new Date(now.getFullYear(), now.getMonth(), 1), to:tod };
+  if (p === 'last_month') return { from:new Date(now.getFullYear(), now.getMonth() - 1, 1), to:new Date(now.getFullYear(), now.getMonth(), 0) };
+  if (p === 'last_30')    return { from:ago(29), to:tod };
+  return { from:null, to:null };
+}
+
+function setPreset(p){
+  F.preset = p;
+  if (p !== 'custom'){ const r = presetRange(p); F.from = r.from; F.to = r.to; }
+  $('dtLabel').textContent = rangeLabel();
+  $('dtTrigger').classList.toggle('active', p !== 'all');
+}
+function rangeLabel(){
+  if (F.preset !== 'custom') return PLABEL[F.preset];
+  if (!F.from && !F.to) return 'All time';
+  return `${F.from ? fmtDay(F.from) : '…'} – ${F.to ? fmtDay(F.to) : '…'}`;
+}
+
+// Row date strings are "YYYY-MM-DDTHH:mm"; compare on the day part.
+function inRange(c){
+  if (!F.from && !F.to) return true;
+  if (!c) return false;
+  const day = c.slice(0, 10);
+  if (F.from && day < toISO(F.from)) return false;
+  if (F.to && day > toISO(F.to)) return false;
+  return true;
+}
+
+// ─────────────────────────────────────────────────────────────
+// FILTERING
+// ─────────────────────────────────────────────────────────────
+const valOf = (r, key) => key === 'ent' ? r.eid : key === 'team' ? r.tid : (r[key] || '');
+
+function passes(r, skip){
+  if (!inRange(r.c)) return false;
+  for (const { key } of FILTERS){
+    if (key === skip) continue;
+    if (F[key] && !F[key].has(valOf(r, key))) return false;
+  }
+  return true;
+}
+
+// Options for a filter come from rows matching every OTHER filter,
+// so e.g. Team only lists teams of the selected enterprises.
+function optionsFor(key){
+  const m = new Map();
+  for (const r of ROWS){
+    if (!passes(r, key)) continue;
+    const v = valOf(r, key);
+    let o = m.get(v);
+    if (!o){
+      o = { v, n:0,
+        name: key === 'ent' ? (r.ent || r.eid || '(blank)')
+            : key === 'team' ? (r.team || r.tid || '(blank)')
+            : key === 'vqc' ? vqcLabel(v) : (v || '(blank)'),
+        sub: key === 'team' ? r.ent : '' };
+      m.set(v, o);
+    }
+    o.n++;
+  }
+  // Keep selected values visible even if they currently match nothing.
+  if (F[key]) for (const v of F[key]) if (!m.has(v)) m.set(v, { v, n:0, name: labelFor(key, v), sub:'' });
+  return [...m.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
+}
+function labelFor(key, v){
+  const r = ROWS.find(x => valOf(x, key) === v);
+  if (key === 'ent') return r?.ent || v;
+  if (key === 'team') return r?.team || v;
+  if (key === 'vqc') return vqcLabel(v);
+  return v || '(blank)';
+}
+
+// ─────────────────────────────────────────────────────────────
+// MULTI-SELECT DROPDOWNS
+// ─────────────────────────────────────────────────────────────
+function buildFilterUI(){
+  const host = $('filters'), reset = $('resetBtn');
+  for (const f of FILTERS){
+    const g = document.createElement('div');
+    g.className = 'f-group';
+    g.innerHTML = `
+      <span class="f-label">${f.label}</span>
+      <div class="trigger" data-k="${f.key}"><span class="t-text">${f.all}</span><span class="chev">▾</span></div>
+      <div class="panel ms-panel" data-k="${f.key}">
+        <input class="ms-search" placeholder="Search ${f.label.toLowerCase()}…">
+        <div class="ms-bulk"><button data-a="all">Select all shown</button><button data-a="clear">Clear</button></div>
+        <div class="ms-list"></div>
+      </div>`;
+    host.insertBefore(g, reset);
+    const trig = g.querySelector('.trigger'), panel = g.querySelector('.panel'), search = g.querySelector('.ms-search');
+    trig.onclick = e => { e.stopPropagation(); const open = !panel.classList.contains('open'); closePanels(); if (open){ panel.classList.add('open'); trig.classList.add('open'); search.value=''; renderOptions(f.key); search.focus(); } };
+    panel.onclick = e => e.stopPropagation();
+    search.oninput = () => renderOptions(f.key);
+    g.querySelector('[data-a="all"]').onclick = () => {
+      const shown = [...panel.querySelectorAll('.ms-opt input')].map(i => i.value);
+      F[f.key] = new Set([...(F[f.key] || []), ...shown]);
+      changed(f.key);
+    };
+    g.querySelector('[data-a="clear"]').onclick = () => { F[f.key] = null; changed(f.key); };
+    panel.querySelector('.ms-list').onchange = e => {
+      const v = e.target.value, s = new Set(F[f.key] || []);
+      e.target.checked ? s.add(v) : s.delete(v);
+      F[f.key] = s.size ? s : null;
+      changed(f.key);
+    };
+  }
+}
+
+function renderOptions(key){
+  const panel = document.querySelector(`.ms-panel[data-k="${key}"]`);
+  const q = panel.querySelector('.ms-search').value.trim().toLowerCase();
+  const opts = optionsFor(key).filter(o => !q || o.name.toLowerCase().includes(q) || (o.sub||'').toLowerCase().includes(q) || o.v.toLowerCase().includes(q));
+  const sel = F[key];
+  panel.querySelector('.ms-list').innerHTML = opts.length ? opts.slice(0, 500).map(o => `
+    <label class="ms-opt">
+      <input type="checkbox" value="${esc(o.v)}" ${sel && sel.has(o.v) ? 'checked' : ''}>
+      <span class="o-name">${esc(o.name)}${o.sub ? ` <span class="o-sub">· ${esc(o.sub)}</span>` : ''}</span>
+      <span class="o-n mono">${fmt(o.n)}</span>
+    </label>`).join('') : '<div class="ms-empty">No options</div>';
+}
+
+function syncTriggers(){
+  for (const f of FILTERS){
+    const trig = document.querySelector(`.trigger[data-k="${f.key}"]`);
+    const s = F[f.key];
+    trig.classList.toggle('active', !!s);
+    trig.querySelector('.t-text').textContent = !s ? f.all : s.size === 1 ? labelFor(f.key, [...s][0]) : `${s.size} selected`;
+  }
+}
+
+function closePanels(){
+  document.querySelectorAll('.panel.open').forEach(p => p.classList.remove('open'));
+  document.querySelectorAll('.trigger.open').forEach(t => t.classList.remove('open'));
+}
+
+function changed(key){
+  syncTriggers();
+  if (key) renderOptions(key);
+  render();
+}
+
+// ─────────────────────────────────────────────────────────────
+// DATE PICKER UI
+// ─────────────────────────────────────────────────────────────
+function buildDateUI(){
+  $('dpPresets').innerHTML = PRESETS.map(([k, l]) => `<button class="dp-preset" data-p="${k}">${l}</button>`).join('');
+  const markSel = () => document.querySelectorAll('.dp-preset').forEach(b => b.classList.toggle('sel', b.dataset.p === F.preset));
+  const fillInputs = () => {
+    $('dpFrom').value = F.from ? toISO(F.from) : '';
+    $('dpTo').value = F.to ? toISO(F.to) : '';
+    $('dpPreview').textContent = (F.from || F.to) ? `${F.from ? fmtDay(F.from) : '…'} → ${F.to ? fmtDay(F.to) : '…'}` : 'All dates';
+  };
+  $('dtTrigger').onclick = e => {
+    e.stopPropagation();
+    const open = !$('dtPanel').classList.contains('open');
+    closePanels();
+    if (open){ $('dtPanel').classList.add('open'); $('dtTrigger').classList.add('open'); markSel(); fillInputs(); }
+  };
+  $('dtPanel').onclick = e => e.stopPropagation();
+  $('dpPresets').onclick = e => {
+    const p = e.target.dataset?.p; if (!p) return;
+    if (p === 'custom'){ F.preset = 'custom'; markSel(); $('dpFrom').focus(); return; }
+    setPreset(p); markSel(); fillInputs(); closePanels(); changed();
+  };
+  const parse = v => { if (!v) return null; const [y, m, d] = v.split('-').map(Number); return new Date(y, m - 1, d); };
+  $('dpApply').onclick = () => {
+    let fr = parse($('dpFrom').value), to = parse($('dpTo').value);
+    if (fr && to && fr > to) [fr, to] = [to, fr];
+    F.preset = 'custom'; F.from = fr; F.to = to;
+    setPreset('custom'); closePanels(); changed();
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// RENDER
+// ─────────────────────────────────────────────────────────────
+function render(){
+  const rows = ROWS.filter(r => passes(r));
+  const ents = new Set(), teams = new Set(), vins = new Set(), vp = new Set();
+  const groups = new Map();
+  for (const r of rows){
+    ents.add(r.eid); teams.add(r.tid);
+    if (r.vin){ vins.add(r.vin); if (r.vp === 1) vp.add(r.vin); }
+    const gk = groupBy === 'ent' ? r.eid : r.tid;
+    let g = groups.get(gk);
+    if (!g){ g = { name: groupBy === 'ent' ? (r.ent || r.eid) : (r.team || r.tid), sub: groupBy === 'team' ? r.ent : '', teams:new Set(), vins:new Set(), vp:new Set() }; groups.set(gk, g); }
+    g.teams.add(r.tid);
+    if (r.vin){ g.vins.add(r.vin); if (r.vp === 1) g.vp.add(r.vin); }
+  }
+
+  const list = [...groups.values()].map(g => ({ name:g.name, sub:g.sub, teams:g.teams.size, vins:g.vins.size, vp:g.vp.size, pct: g.vins.size ? g.vp.size / g.vins.size : 0 }));
+  const dir = sort.dir === 'asc' ? 1 : -1;
+  list.sort((a, b) => sort.col === 'name' ? dir * a.name.localeCompare(b.name) : dir * (a[sort.col] - b[sort.col]) || b.vins - a.vins);
+  const maxV = Math.max(1, ...list.map(g => g.vins));
+  const pctAll = vins.size ? (vp.size / vins.size * 100).toFixed(1) : '0.0';
+  const arrow = c => sort.col === c ? `<span class="arr">${sort.dir === 'asc' ? '↑' : '↓'}</span>` : '';
+
+  $('content').innerHTML = `
+    <section class="kpis">
+      <div class="kpi"><div class="kpi-label">Unique enterprises</div><div class="kpi-value">${fmt(ents.size)}</div><div class="kpi-sub">${esc(rangeLabel())}</div></div>
+      <div class="kpi"><div class="kpi-label">Unique teams</div><div class="kpi-value">${fmt(teams.size)}</div><div class="kpi-sub">across ${fmt(ents.size)} enterprise${ents.size === 1 ? '' : 's'}</div></div>
+      <div class="kpi"><div class="kpi-label">Unique VINs</div><div class="kpi-value">${fmt(vins.size)}</div><div class="kpi-sub">distinct sku_name · ${fmt(rows.length)} rows</div></div>
+      <div class="kpi accent"><div class="kpi-label">Videos processed</div><div class="kpi-value">${fmt(vp.size)}</div><div class="kpi-sub">Video_Processed = 1 · ${pctAll}% of VINs</div></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head">
+        <h2>Breakdown by ${groupBy === 'ent' ? 'enterprise' : 'team'}</h2>
+        <div class="seg" id="groupSeg">
+          <button data-g="ent" class="${groupBy === 'ent' ? 'on' : ''}">Enterprise</button>
+          <button data-g="team" class="${groupBy === 'team' ? 'on' : ''}">Team</button>
+        </div>
+      </div>
+      ${list.length ? `
+      <div class="tbl-wrap"><table>
+        <thead><tr>
+          <th data-s="name">${groupBy === 'ent' ? 'Enterprise' : 'Team'}${arrow('name')}</th>
+          ${groupBy === 'ent' ? `<th class="num" data-s="teams">Teams${arrow('teams')}</th>` : ''}
+          <th class="num" data-s="vins">Unique VINs${arrow('vins')}</th>
+          <th class="num" data-s="vp">Videos processed${arrow('vp')}</th>
+          <th class="num" data-s="pct">% processed${arrow('pct')}</th>
+        </tr></thead>
+        <tbody>${list.map(g => `<tr>
+          <td>${esc(g.name)}${g.sub ? ` <span class="sub" style="color:var(--muted)">· ${esc(g.sub)}</span>` : ''}</td>
+          ${groupBy === 'ent' ? `<td class="num mono">${fmt(g.teams)}</td>` : ''}
+          <td class="num mono"><span class="bar" style="width:${Math.max(2, g.vins / maxV * 80)}px"></span>${fmt(g.vins)}</td>
+          <td class="num mono">${fmt(g.vp)}</td>
+          <td class="num mono">${(g.pct * 100).toFixed(1)}%</td>
+        </tr>`).join('')}</tbody>
+        <tfoot><tr>
+          <td>Total (${fmt(list.length)})</td>
+          ${groupBy === 'ent' ? `<td class="num mono">${fmt(teams.size)}</td>` : ''}
+          <td class="num mono">${fmt(vins.size)}</td>
+          <td class="num mono">${fmt(vp.size)}</td>
+          <td class="num mono">${pctAll}%</td>
+        </tr></tfoot>
+      </table></div>` : `<div class="state">No VINs match the current filters.</div>`}
+    </section>`;
+
+  $('groupSeg').onclick = e => { const g = e.target.dataset?.g; if (g && g !== groupBy){ groupBy = g; render(); } };
+  document.querySelectorAll('th[data-s]').forEach(th => th.onclick = () => {
+    const c = th.dataset.s;
+    if (sort.col === c) sort.dir = sort.dir === 'desc' ? 'asc' : 'desc';
+    else { sort.col = c; sort.dir = c === 'name' ? 'asc' : 'desc'; }
+    render();
+  });
+}
+
+// ─────────────────────────────────────────────────────────────
+// DATA
+// ─────────────────────────────────────────────────────────────
+async function load(force){
+  $('syncBtn').disabled = true;
+  $('syncInfo').textContent = 'Syncing…';
+  try {
+    const resp = await fetch('/api/data' + (force ? '?force=1' : ''));
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.status);
+    ROWS = data.rows || [];
+    $('syncInfo').textContent = `Synced ${new Date(data.lastSynced).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })} · ${fmt(ROWS.length)} rows`;
+    syncTriggers();
+    render();
+  } catch (err){
+    $('syncInfo').textContent = 'Sync failed';
+    if (!ROWS.length) $('content').innerHTML = `<div class="state err">Couldn't load data: ${esc(err.message)}</div>`;
+  } finally {
+    $('syncBtn').disabled = false;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────────────────────
+(function init(){
+  try { const t = localStorage.getItem('vvs_theme'); if (t) document.documentElement.dataset.theme = t; else if (matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.dataset.theme = 'dark'; } catch(e){}
+  $('themeBtn').onclick = () => {
+    const t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = t;
+    try { localStorage.setItem('vvs_theme', t); } catch(e){}
+  };
+  buildDateUI();
+  buildFilterUI();
+  setPreset('this_month');
+  document.addEventListener('click', closePanels);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanels(); });
+  $('resetBtn').onclick = () => { for (const f of FILTERS) F[f.key] = null; setPreset('this_month'); changed(); };
+  $('syncBtn').onclick = () => load(true);
+  load(false);
+  setInterval(() => load(false), 5 * 60 * 1000);
+})();
+</script>
+</body>
+</html>
