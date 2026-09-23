@@ -21,6 +21,19 @@ same VIN in the same rooftop count once. This applies to every VIN number on the
 - **QC On count**: same, where `video_qualityCheck = 1`
 - **Videos processed**: same, where `Video_Processed = 1`
 
+## Views
+A **Summary / Report** switch at the top centre of the header (also `#summary` / `#report` in the URL). Both views
+use the same filters.
+
+- **Summary**: KPI cards, source/region cards, breakdown table.
+- **Report**: three rows of three cards:
+  - **VIN level**: total VINs, QC on VINs, video processed VINs (VIN per rooftop).
+  - **Enterprise level**: enterprises with any VIN / with a QC-on VIN / with a processed VIN.
+  - **Rooftop (team) level**: the same counts for rooftops.
+
+  Clicking a VIN card opens the VIN list. Clicking an enterprise or rooftop card opens a sortable list with VINs,
+  QC on and processed counts and percentages, plus CSV download.
+
 ## Cards and breakdown
 - **Source and Region cards** (below the KPIs): unique VINs per value and each value's share. They're counted under every
   filter except their own dimension. Clicking a card toggles that filter.

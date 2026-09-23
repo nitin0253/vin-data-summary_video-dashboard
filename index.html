@@ -28,7 +28,10 @@
 
   /* HEADER */
   #sticky-top{position:sticky;top:0;z-index:100;}
-  header{background:var(--surface);border-bottom:1px solid var(--line);padding:12px 28px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;}
+  header{background:var(--surface);border-bottom:1px solid var(--line);padding:12px 28px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:16px;}
+  header .actions{justify-self:end;}
+  .view-seg{justify-self:center;}
+  .view-seg button{padding:6px 18px;font-size:13px;}
   .brand{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;}
   header h1{margin:0;font-family:'Bricolage Grotesque',serif;font-weight:600;font-size:22px;letter-spacing:-.025em;}
   .tag{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;}
@@ -120,6 +123,17 @@
   .src-pct{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin-top:2px;}
   @media(max-width:900px){.src-row{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));}}
 
+  /* REPORT */
+  .rep-row{margin-top:22px;}
+  .rep-row:first-child{margin-top:0;}
+  .rep-head{display:flex;align-items:baseline;gap:10px;margin:0 0 10px;}
+  .rep-head h2{margin:0;font-family:'Bricolage Grotesque',serif;font-weight:600;font-size:17px;}
+  .rep-head span{font-size:12px;color:var(--muted);}
+  .rep-cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;}
+  .kpi.qc .kpi-value{color:var(--accent);}
+  .kpi-bar{height:4px;border-radius:2px;background:var(--line);margin-top:12px;overflow:hidden;}
+  .kpi-bar i{display:block;height:100%;background:var(--kb,var(--ink-2));border-radius:2px;}
+
   /* DRILL-DOWN */
   .kpi.click{cursor:pointer;transition:border-color .15s,transform .15s;}
   .kpi.click:hover{border-color:var(--accent);transform:translateY(-1px);}
@@ -147,6 +161,9 @@
 
   @media(max-width:1100px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr));}}
   @media(max-width:600px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  @media(max-width:700px){.rep-cards{grid-template-columns:minmax(0,1fr);}}
+  @media(max-width:760px){header{grid-template-columns:1fr auto;}.view-seg{grid-column:1 / -1;grid-row:2;}}
+  @media(max-width:600px){header .tag,.sync-info{display:none;}header h1{font-size:18px;white-space:nowrap;}}
   @media(max-width:600px){
     #sticky-top{position:static;}
     header,.filters,main{padding-left:16px;padding-right:16px;}
@@ -167,6 +184,10 @@
     <div class="brand">
       <h1>VIN Video Summary</h1>
       <span class="tag">Metabase model 13134</span>
+    </div>
+    <div class="seg view-seg" id="viewSeg" role="tablist" aria-label="Dashboard view">
+      <button data-view="summary" role="tab">Summary</button>
+      <button data-view="report" role="tab">Report</button>
     </div>
     <div class="actions">
       <span class="sync-info" id="syncInfo">Loading…</span>
@@ -210,6 +231,7 @@
 let D = null;
 const F = { preset:'this_month', from:null, to:null, ent:null, team:null, crm:null, vqc:null, src:null, reg:null };
 let groupBy = 'ent';
+let VIEW = location.hash === '#report' ? 'report' : 'summary';
 const sort = { col:'vins', dir:'desc' };
 
 const FILTERS = [
@@ -507,6 +529,9 @@ function cardRowHTML(dim, ss, cols){
 
 function render(){
   if (!D) return;
+  document.querySelectorAll('#viewSeg button').forEach(b => { const on = b.dataset.view === VIEW; b.classList.toggle('on', on); b.setAttribute('aria-selected', on); });
+  document.querySelector('header h1').textContent = VIEW === 'report' ? 'VIN Video Report' : 'VIN Video Summary';
+  if (VIEW === 'report') return renderReport();
   // One pass over rows. Counting unit is U = (VIN, rooftop); rows are sorted by it,
   // so a unit is new for a bucket whenever it differs from the last one that bucket saw.
   const ok = comboOk(null), { any, lo, hi } = dayBounds();
@@ -645,6 +670,129 @@ function render(){
 }
 
 // ─────────────────────────────────────────────────────────────
+// REPORT VIEW
+// ─────────────────────────────────────────────────────────────
+// Per-rooftop counts of VIN units (U = VIN × rooftop), all / QC on / processed,
+// under the current filters. A unit belongs to exactly one team, so enterprise
+// totals are sums of their teams.
+function teamTotals(){
+  const ok = comboOk(null), { any, lo, hi } = dayBounds();
+  const { K, DAY, U, n, cTeam, cVp, cQc } = D, nt = D.teams.length;
+  const all = new Int32Array(nt), qc = new Int32Array(nt), vp = new Int32Array(nt);
+  let last = -1, lastQc = -1, lastVp = -1;
+  for (let i = 0; i < n; i++){
+    const c = K[i];
+    if (!ok[c]) continue;
+    if (!any){ const d = DAY[i]; if (d < 0 || d < lo || d > hi) continue; }
+    const u = U[i], t = cTeam[c];
+    if (u !== last){ all[t]++; last = u; }
+    if (cQc[c] === 1 && u !== lastQc){ qc[t]++; lastQc = u; }
+    if (cVp[c] === 1 && u !== lastVp){ vp[t]++; lastVp = u; }
+  }
+  return { all, qc, vp };
+}
+
+// Rows for the enterprise / rooftop lists: one per entity with at least one VIN.
+function entityRows(level, T){
+  const tEnt = D.teams.map(t => D.ents.findIndex(e => e.id === t[0]));
+  if (level === 'team'){
+    const out = [];
+    D.teams.forEach((t, i) => { if (T.all[i]) out.push({ name:t[3] || t[2] || '(blank)', ent:t[1] || t[0], all:T.all[i], qc:T.qc[i], vp:T.vp[i] }); });
+    return out;
+  }
+  const m = D.ents.map(e => ({ name:e.name, teams:0, all:0, qc:0, vp:0 }));
+  D.teams.forEach((t, i) => { if (!T.all[i]) return; const e = m[tEnt[i]]; e.teams++; e.all += T.all[i]; e.qc += T.qc[i]; e.vp += T.vp[i]; });
+  return m.filter(e => e.all);
+}
+
+function renderReport(){
+  const T = teamTotals();
+  const sum = a => a.reduce((x, y) => x + y, 0), cnt = a => a.reduce((x, y) => x + (y > 0 ? 1 : 0), 0);
+  const ents = entityRows('ent', T);
+  const vin = { all:sum(T.all), qc:sum(T.qc), vp:sum(T.vp) };
+  const ent = { all:ents.length, qc:ents.filter(e => e.qc).length, vp:ents.filter(e => e.vp).length };
+  const team = { all:cnt(T.all), qc:cnt(T.qc), vp:cnt(T.vp) };
+  const pct = (a, b) => b ? (a / b * 100).toFixed(2) + '%' : '0.00%';
+  const card = (level, mode, label, val, tot, sub) => `
+    <div class="kpi click ${mode === 'qc' ? 'qc' : mode === 'vp' ? 'accent' : ''}" data-level="${level}" data-mode="${mode}" role="button" tabindex="0">
+      <div class="kpi-label">${label}</div>
+      <div class="kpi-value">${fmt(val)}</div>
+      <div class="kpi-sub">${sub(pct(val, tot))}</div>
+      <div class="kpi-bar" style="--kb:${mode === 'qc' ? 'var(--accent)' : mode === 'vp' ? 'var(--green)' : 'var(--ink-2)'}"><i style="width:${tot ? val / tot * 100 : 0}%"></i></div>
+      <div class="kpi-hint">View list →</div>
+    </div>`;
+  const row = (title, note, cards) => `<section class="rep-row"><div class="rep-head"><h2>${title}</h2><span>${note}</span></div><div class="rep-cards">${cards}</div></section>`;
+
+  $('content').innerHTML =
+    row('VIN level report', `${esc(rangeLabel())} · VINs counted per rooftop`,
+      card('vin', 'all', 'Total VIN count', vin.all, vin.all, () => `${fmt(team.all)} rooftops · ${fmt(ent.all)} enterprises`) +
+      card('vin', 'qc', 'QC on count', vin.qc, vin.all, p => `video_qualityCheck = 1 · ${p} of VINs`) +
+      card('vin', 'vp', 'Video processed count', vin.vp, vin.all, p => `Video_Processed = 1 · ${p} of VINs`)) +
+    row('Enterprise level report', 'Enterprises with at least one matching VIN',
+      card('ent', 'all', "Total VIN's enterprise count", ent.all, ent.all, () => `enterprises with any VIN`) +
+      card('ent', 'qc', "QC on VIN's enterprise count", ent.qc, ent.all, p => `${p} of enterprises`) +
+      card('ent', 'vp', "Video processed's enterprise count", ent.vp, ent.all, p => `${p} of enterprises`)) +
+    row('Rooftop (team) level report', 'Rooftops with at least one matching VIN',
+      card('team', 'all', "Total VIN's rooftop count", team.all, team.all, () => `rooftops with any VIN`) +
+      card('team', 'qc', "QC on VIN's rooftop count", team.qc, team.all, p => `${p} of rooftops`) +
+      card('team', 'vp', "Video processed's rooftop count", team.vp, team.all, p => `${p} of rooftops`));
+
+  document.querySelectorAll('.rep-row .kpi').forEach(el => {
+    const go = () => {
+      const { level, mode } = el.dataset;
+      if (level === 'vin') openDrill({ qcOnly: mode === 'qc', vpOnly: mode === 'vp' });
+      else openEntityList(level, mode, T);
+    };
+    el.onclick = go;
+    el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } };
+  });
+}
+
+// Modal list of enterprises or rooftops (all / with QC-on VINs / with processed VINs).
+function openEntityList(level, mode, T){
+  const isTeam = level === 'team';
+  const noun = isTeam ? 'Rooftops' : 'Enterprises';
+  const title = noun + (mode === 'qc' ? ' with QC-on VINs' : mode === 'vp' ? ' with processed VINs' : ' with VINs');
+  const recs = entityRows(level, T).filter(r => mode === 'all' || r[mode] > 0);
+  const cols = [
+    [isTeam ? 'Rooftop (team)' : 'Enterprise', r => r.name, 'text'],
+    ...(isTeam ? [['Enterprise', r => r.ent, 'text']] : [['Rooftops', r => r.teams, 'num']]),
+    ['VINs', r => r.all, 'num'], ['QC on', r => r.qc, 'num'], ['QC on %', r => r.all ? r.qc / r.all * 100 : 0, 'pct'],
+    ['Processed', r => r.vp, 'num'], ['Processed %', r => r.all ? r.vp / r.all * 100 : 0, 'pct'],
+  ];
+  const sortCol = mode === 'qc' ? 3 : mode === 'vp' ? 5 : 2;
+  const ds = { col: sortCol, dir:'desc' };
+  const ov = modalShell(title, `${fmt(recs.length)} ${noun.toLowerCase()} · ${filterScope()}`, `Search ${noun.toLowerCase()}…`);
+  let shown = recs;
+  const cell = (c, r) => { const v = c[1](r); return c[2] === 'pct' ? v.toFixed(2) + '%' : c[2] === 'num' ? fmt(v) : esc(v); };
+  const draw = () => {
+    const q = ov.querySelector('#dmSearch').value.trim().toLowerCase();
+    shown = q ? recs.filter(r => (r.name + ' ' + (r.ent || '')).toLowerCase().includes(q)) : recs.slice();
+    const f = cols[ds.col][1], text = cols[ds.col][2] === 'text', dir = ds.dir === 'asc' ? 1 : -1;
+    shown.sort((a, b) => dir * (text ? String(f(a)).localeCompare(String(f(b))) : f(a) - f(b)) || b.all - a.all);
+    const arrow = i => ds.col === i ? `<span class="arr">${ds.dir === 'asc' ? '↑' : '↓'}</span>` : '';
+    ov.querySelector('#dmBody').innerHTML = shown.length ? `<table>
+      <thead><tr>${cols.map((c, i) => `<th data-c="${i}" class="${c[2] === 'text' ? '' : 'num'}">${c[0]}${arrow(i)}</th>`).join('')}</tr></thead>
+      <tbody>${shown.map(r => `<tr>${cols.map(c => `<td class="${c[2] === 'text' ? '' : 'num mono'}">${cell(c, r)}</td>`).join('')}</tr>`).join('')}</tbody>
+    </table>` : '<div class="state">No rows match.</div>';
+    ov.querySelectorAll('#dmBody th[data-c]').forEach(th => th.onclick = () => {
+      const c = +th.dataset.c;
+      if (ds.col === c) ds.dir = ds.dir === 'desc' ? 'asc' : 'desc';
+      else { ds.col = c; ds.dir = cols[c][2] === 'text' ? 'asc' : 'desc'; }
+      draw();
+    });
+    ov.querySelector('#dmFoot').textContent = `${fmt(shown.length)} ${noun.toLowerCase()}`;
+  };
+  const search = ov.querySelector('#dmSearch');
+  search.disabled = false; search.focus();
+  search.oninput = draw;
+  const csvBtn = ov.querySelector('#dmCsv');
+  csvBtn.disabled = false;
+  csvBtn.onclick = () => downloadCsv(title, cols.map(c => c[0]), shown.map(r => cols.map(c => c[2] === 'pct' ? c[1](r).toFixed(2) : String(c[1](r)))));
+  draw();
+}
+
+// ─────────────────────────────────────────────────────────────
 // DRILL-DOWN (record list for a KPI or a table cell)
 // ─────────────────────────────────────────────────────────────
 let VINS = null;   // VIN strings, index = VIN id (vins.txt, loaded on first drill-down)
@@ -692,18 +840,21 @@ function rowRec(i){
            vqc: vqcLabel(D.cv.vqc[c]), vp: D.cVp[c] === 1 ? 'Yes' : 'No', day: dayStr(D.DAY[i]) };
 }
 
-async function openDrill({ group = null, vpOnly = false, qcOnly = false }){
-  const title = (vpOnly ? 'Processed VINs' : qcOnly ? 'QC-on VINs' : 'VINs') + (group ? ` · ${group.name}` : '');
+function filterScope(){
+  return [rangeLabel(), ...FILTERS.filter(f => F[f.key]).map(f => `${f.label}: ${F[f.key].size === 1 ? labelFor(f.key, [...F[f.key]][0]) : F[f.key].size + ' selected'}`)].join(' · ');
+}
+
+function modalShell(title, sub, placeholder){
   const ov = document.createElement('div');
   ov.className = 'overlay';
   ov.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">
-    <div class="modal-head"><div><h3>${esc(title)}</h3><div class="modal-sub" id="dmSub">Loading…</div></div>
+    <div class="modal-head"><div><h3>${esc(title)}</h3><div class="modal-sub" id="dmSub">${esc(sub)}</div></div>
       <button class="btn-icon" id="dmClose" aria-label="Close">✕</button></div>
     <div class="modal-tools">
-      <input class="ms-search" id="dmSearch" placeholder="Search VIN, enterprise, team, status, source…" disabled>
+      <input class="ms-search" id="dmSearch" placeholder="${esc(placeholder)}" disabled>
       <button class="btn-icon" id="dmCsv" disabled>Download CSV</button>
     </div>
-    <div class="tbl-wrap" id="dmBody"><div class="state">Loading VIN list…</div></div>
+    <div class="tbl-wrap" id="dmBody"><div class="state">Loading…</div></div>
     <div class="modal-foot" id="dmFoot"></div>
   </div>`;
   document.body.appendChild(ov);
@@ -713,6 +864,23 @@ async function openDrill({ group = null, vpOnly = false, qcOnly = false }){
   document.addEventListener('keydown', onKey);
   ov.onclick = e => { if (e.target === ov) close(); };
   ov.querySelector('#dmClose').onclick = close;
+  return ov;
+}
+
+function downloadCsv(title, header, rows){
+  const q = v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  const csv = [header.map(q).join(','), ...rows.map(r => r.map(q).join(','))].join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv' }));
+  a.download = `${title.replace(/[^\w]+/g, '_').replace(/^_|_$/g, '')}_${toISO(new Date())}.csv`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+async function openDrill({ group = null, vpOnly = false, qcOnly = false }){
+  const title = (vpOnly ? 'Processed VINs' : qcOnly ? 'QC-on VINs' : 'VINs') + (group ? ` · ${group.name}` : '');
+  const ov = modalShell(title, 'Loading…', 'Search VIN, enterprise, team, status, source…');
+  ov.querySelector('#dmBody').innerHTML = '<div class="state">Loading VIN list…</div>';
 
   try { await loadVins(); }
   catch (err){ ov.querySelector('#dmBody').innerHTML = `<div class="state err">Couldn't load VINs: ${esc(err.message)}</div>`; return; }
@@ -720,8 +888,7 @@ async function openDrill({ group = null, vpOnly = false, qcOnly = false }){
   const idx = collectRows(group, vpOnly, qcOnly);
   const recs = idx.map(rowRec);
   const vinCount = new Set(idx.map(i => D.U[i])).size;
-  const scope = [rangeLabel(), ...FILTERS.filter(f => F[f.key]).map(f => `${f.label}: ${F[f.key].size === 1 ? labelFor(f.key, [...F[f.key]][0]) : F[f.key].size + ' selected'}`)].join(' · ');
-  ov.querySelector('#dmSub').textContent = `${fmt(vinCount)} VINs · ${fmt(recs.length)} rows · ${scope}`;
+  ov.querySelector('#dmSub').textContent = `${fmt(vinCount)} VINs · ${fmt(recs.length)} rows · ${filterScope()}`;
 
   const LIMIT = 500;
   // Same behaviour as the breakdown table: click a header to sort, click again to flip.
@@ -758,15 +925,7 @@ async function openDrill({ group = null, vpOnly = false, qcOnly = false }){
   search.oninput = () => { clearTimeout(timer); timer = setTimeout(draw, 150); };
   const csvBtn = ov.querySelector('#dmCsv');
   csvBtn.disabled = false;
-  csvBtn.onclick = () => {
-    const q = v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-    const csv = [DRILL_COLS.map(([h]) => h).join(','), ...shown.map(r => DRILL_COLS.map(([, f]) => q(String(f(r)))).join(','))].join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv' }));
-    a.download = `${title.replace(/[^\w]+/g, '_').replace(/^_|_$/g, '')}_${toISO(new Date())}.csv`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  };
+  csvBtn.onclick = () => downloadCsv(title, DRILL_COLS.map(([h]) => h), shown.map(r => DRILL_COLS.map(([, f]) => String(f(r)))));
   draw();
 }
 
@@ -809,6 +968,10 @@ async function load(){
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanels(); });
   $('resetBtn').onclick = () => { for (const f of FILTERS) F[f.key] = null; setPreset('this_month'); changed(); };
   $('syncBtn').onclick = () => load();
+  const setView = v => { VIEW = v; if (location.hash !== '#' + v) history.replaceState(null, '', '#' + v); render(); window.scrollTo({ top:0 }); };
+  $('viewSeg').onclick = e => { const v = e.target.closest('button')?.dataset.view; if (v && v !== VIEW) setView(v); };
+  window.addEventListener('hashchange', () => { const v = location.hash === '#report' ? 'report' : 'summary'; if (v !== VIEW){ VIEW = v; render(); } });
+  document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.view === VIEW));
   load();
   setInterval(load, 5 * 60 * 1000);
 })();
