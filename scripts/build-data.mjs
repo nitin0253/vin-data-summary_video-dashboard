@@ -130,7 +130,7 @@ function normDate(s) {
 //   teamMeta: [[stage, sub_stage, [products]], ...] aligned with teams, from each team's latest row
 //   crm/src/vqc/reg: distinct values
 //   combos: [[teamIdx, crmIdx, srcIdx, vqcIdx, Video_Processed, regIdx], ...]
-//   rows sorted by VIN; three parallel columns:
+//   rows sorted by VIN, then team_id; three parallel columns:
 //     k: combo index, d: created_on as days since 1970-01-01 (-1 = no date),
 //     v: VIN id delta from the previous row (VIN ids are 0..vins-1 in sorted order)
 // VIN strings go to a separate vins.txt (line 1 = lastSynced, then VIN id N on
@@ -140,7 +140,10 @@ function encode(rows) {
   const teams = dict(), crm = dict(), src = dict(), vqc = dict(), reg = dict(), combos = dict();
   const dayOf = c => c ? Math.round(Date.UTC(+c.slice(0, 4), +c.slice(5, 7) - 1, +c.slice(8, 10)) / 864e5) : -1;
 
-  const sorted = rows.slice().sort((a, b) => a.vin < b.vin ? -1 : a.vin > b.vin ? 1 : 0);
+  // Sorted by VIN, then team: the page counts a VIN once per rooftop (team) by
+  // spotting where the (VIN, team) pair changes between consecutive rows.
+  const cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
+  const sorted = rows.slice().sort((a, b) => cmp(a.vin, b.vin) || cmp(a.tid, b.tid));
   const k = [], d = [], v = [], vinList = [], meta = [];
   let vinId = -1, prevVin = null, prevId = 0;
   for (const r of sorted) {

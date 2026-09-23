@@ -292,7 +292,16 @@ function decode(j){
     cv.ent.push(team[0]); cv.team.push(team[2]); cv.crm.push(j.crm[c]); cv.src.push(j.src[s]); cv.vqc.push(j.vqc[q]); cv.reg.push(regs[rg] ?? '');
     cTeam.push(t); cEnt.push(entIdx.get(team[0])); cVp.push(vp); cSrc.push(s); cReg.push(rg); cQc.push(j.vqc[q] === '1' ? 1 : 0);
   }
-  return { n, K, DAY, VIN, teams:j.teams, teamMeta:j.teamMeta || [], ents, srcs:j.src, regs, cv, cTeam, cEnt, cVp, cSrc, cReg, cQc, nc:j.combos.length, lastSynced:j.lastSynced };
+  // U = one id per (VIN, rooftop/team). A VIN uploaded under two rooftops counts
+  // twice; repeated rows for the same VIN in the same rooftop count once. Rows
+  // arrive sorted by VIN then team, so the id changes wherever that pair changes.
+  const U = new Int32Array(n);
+  for (let i = 0, u = -1, pv = -1, pt = -1; i < n; i++){
+    const t = cTeam[K[i]];
+    if (VIN[i] !== pv || t !== pt){ u++; pv = VIN[i]; pt = t; }
+    U[i] = u;
+  }
+  return { n, K, DAY, VIN, U, teams:j.teams, teamMeta:j.teamMeta || [], ents, srcs:j.src, regs, cv, cTeam, cEnt, cVp, cSrc, cReg, cQc, nc:j.combos.length, lastSynced:j.lastSynced };
 }
 
 function comboOk(skip){
@@ -307,11 +316,11 @@ function comboOk(skip){
   return ok;
 }
 
-// Counts are unique VINs (same as the KPI cards), not rows. Rows are sorted by
-// VIN, so a VIN is new for a value when it differs from the last VIN that value saw.
+// Counts are VINs per rooftop (same as the KPI cards), not rows. Rows are sorted by
+// VIN then team, so a unit (U) is new for a value when it differs from the last one that value saw.
 function optionsFor(key){
   const ok = comboOk(key), { any, lo, hi } = dayBounds();
-  const { K, DAY, VIN, n } = D, cv = D.cv[key];
+  const { K, DAY, U, n } = D, cv = D.cv[key];
   const vidx = new Map(), vOf = new Int32Array(D.nc);
   for (let c = 0; c < D.nc; c++){ let x = vidx.get(cv[c]); if (x === undefined){ x = vidx.size; vidx.set(cv[c], x); } vOf[c] = x; }
   const cnt = new Int32Array(vidx.size), last = new Int32Array(vidx.size).fill(-1), sub = new Array(vidx.size);
@@ -319,7 +328,7 @@ function optionsFor(key){
     const c = K[i];
     if (!ok[c]) continue;
     if (!any){ const d = DAY[i]; if (d < 0 || d < lo || d > hi) continue; }
-    const x = vOf[c], v = VIN[i];
+    const x = vOf[c], v = U[i];
     if (sub[x] === undefined) sub[x] = key === 'team' ? D.ents[D.cEnt[c]].name : '';
     if (v !== last[x]){ cnt[x]++; last[x] = v; }
   }
@@ -349,7 +358,7 @@ function buildFilterUI(){
       <div class="trigger" data-k="${f.key}"><span class="t-text">${f.all}</span><span class="chev">▾</span></div>
       <div class="panel ms-panel" data-k="${f.key}">
         <input class="ms-search" placeholder="Search ${f.label.toLowerCase()}…">
-        <div class="ms-bulk"><button data-a="all">Select all shown</button><span class="ms-note">unique VINs</span><button data-a="clear">Clear</button></div>
+        <div class="ms-bulk"><button data-a="all">Select all shown</button><span class="ms-note">VINs per rooftop</span><button data-a="clear">Clear</button></div>
         <div class="ms-list"></div>
       </div>`;
     host.insertBefore(g, reset);
@@ -450,7 +459,7 @@ const CARD_DIMS = [
 ];
 function dimStats(dim){
   const ok = comboOk(dim.key), { any, lo, hi } = dayBounds();
-  const { K, DAY, VIN, n } = D, vals = dim.values(), ns = vals.length;
+  const { K, DAY, U, n } = D, vals = dim.values(), ns = vals.length;
   const idxOf = Int32Array.from({ length:D.nc }, (_, c) => dim.of(c));
   const cnt = new Int32Array(ns), last = new Int32Array(ns).fill(-1);
   let total = 0, lastAll = -1;
@@ -458,7 +467,7 @@ function dimStats(dim){
     const c = K[i];
     if (!ok[c]) continue;
     if (!any){ const d = DAY[i]; if (d < 0 || d < lo || d > hi) continue; }
-    const v = VIN[i], s = idxOf[c];
+    const v = U[i], s = idxOf[c];
     if (v !== lastAll){ total++; lastAll = v; }
     if (v !== last[s]){ cnt[s]++; last[s] = v; }
   }
@@ -498,10 +507,10 @@ function cardRowHTML(dim, ss, cols){
 
 function render(){
   if (!D) return;
-  // One pass over rows. Rows are sorted by VIN, so a VIN is new for a bucket
-  // whenever it differs from the last VIN that bucket saw.
+  // One pass over rows. Counting unit is U = (VIN, rooftop); rows are sorted by it,
+  // so a unit is new for a bucket whenever it differs from the last one that bucket saw.
   const ok = comboOk(null), { any, lo, hi } = dayBounds();
-  const { K, DAY, VIN, n, cTeam, cEnt, cVp, cQc } = D;
+  const { K, DAY, U, n, cTeam, cEnt, cVp, cQc } = D;
   const byTeam = groupBy === 'team';
   const nG = byTeam ? D.teams.length : D.ents.length;
   const gVins = new Int32Array(nG), gVp = new Int32Array(nG), gLast = new Int32Array(nG).fill(-1), gLastVp = new Int32Array(nG).fill(-1);
@@ -512,7 +521,7 @@ function render(){
     if (!ok[c]) continue;
     if (!any){ const d = DAY[i]; if (d < 0 || d < lo || d > hi) continue; }
     rowsN++; comboHit[c] = 1;
-    const v = VIN[i], g = byTeam ? cTeam[c] : cEnt[c];
+    const v = U[i], g = byTeam ? cTeam[c] : cEnt[c];
     if (v !== last){ vinsN++; last = v; }
     if (v !== gLast[g]){ gVins[g]++; gLast[g] = v; }
     if (cQc[c] === 1 && v !== lastQc){ qcN++; lastQc = v; }
@@ -551,7 +560,7 @@ function render(){
     <section class="kpis">
       <div class="kpi click" data-k="ent" role="button" tabindex="0"><div class="kpi-label">Unique enterprises</div><div class="kpi-value">${fmt(ents.size)}</div><div class="kpi-sub">${esc(rangeLabel())}</div><div class="kpi-hint">Breakdown by enterprise →</div></div>
       <div class="kpi click" data-k="team" role="button" tabindex="0"><div class="kpi-label">Unique teams</div><div class="kpi-value">${fmt(teams.size)}</div><div class="kpi-sub">across ${fmt(ents.size)} enterprise${ents.size === 1 ? '' : 's'}</div><div class="kpi-hint">Breakdown by team →</div></div>
-      <div class="kpi click" data-k="vins" role="button" tabindex="0"><div class="kpi-label">Unique VINs</div><div class="kpi-value">${fmt(vins.size)}</div><div class="kpi-sub">distinct sku_name · ${fmt(rows.length)} rows</div><div class="kpi-hint">View VINs →</div></div>
+      <div class="kpi click" data-k="vins" role="button" tabindex="0"><div class="kpi-label">Unique VINs</div><div class="kpi-value">${fmt(vins.size)}</div><div class="kpi-sub">sku_name per rooftop · ${fmt(rows.length)} rows</div><div class="kpi-hint">View VINs →</div></div>
       <div class="kpi click" data-k="qc" role="button" tabindex="0"><div class="kpi-label">QC On count</div><div class="kpi-value">${fmt(qcN)}</div><div class="kpi-sub">video_qualityCheck = 1 · ${vins.size ? (qcN / vins.size * 100).toFixed(2) : '0.00'}% of VINs</div><div class="kpi-hint">View QC-on VINs →</div></div>
       <div class="kpi accent click" data-k="vp" role="button" tabindex="0"><div class="kpi-label">Videos processed</div><div class="kpi-value">${fmt(vp.size)}</div><div class="kpi-sub">Video_Processed = 1 · ${pctAll}% of VINs</div><div class="kpi-hint">View processed VINs →</div></div>
     </section>
@@ -710,7 +719,7 @@ async function openDrill({ group = null, vpOnly = false, qcOnly = false }){
 
   const idx = collectRows(group, vpOnly, qcOnly);
   const recs = idx.map(rowRec);
-  const vinCount = new Set(idx.map(i => D.VIN[i])).size;
+  const vinCount = new Set(idx.map(i => D.U[i])).size;
   const scope = [rangeLabel(), ...FILTERS.filter(f => F[f.key]).map(f => `${f.label}: ${F[f.key].size === 1 ? labelFor(f.key, [...F[f.key]][0]) : F[f.key].size + ' selected'}`)].join(' · ');
   ov.querySelector('#dmSub').textContent = `${fmt(vinCount)} VINs · ${fmt(recs.length)} rows · ${scope}`;
 

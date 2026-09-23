@@ -14,9 +14,12 @@ Hosted on **GitHub Pages**; data is refreshed by a GitHub Action.
 ## KPIs
 - **Unique enterprises**: distinct `enterprise_id`
 - **Unique teams**: distinct `team_id`
-- **Unique VINs**: distinct `sku_name`
-- **QC On count**: distinct `sku_name` where `video_qualityCheck = 1`
-- **Videos processed**: distinct `sku_name` where `Video_Processed = 1`
+VINs are counted **once per rooftop (team)**: a VIN under two rooftops counts twice, and repeated rows for the
+same VIN in the same rooftop count once. This applies to every VIN number on the page.
+
+- **Unique VINs**: distinct (`sku_name`, `team_id`)
+- **QC On count**: same, where `video_qualityCheck = 1`
+- **Videos processed**: same, where `Video_Processed = 1`
 
 ## Cards and breakdown
 - **Source and Region cards** (below the KPIs): unique VINs per value and each value's share. They're counted under every
