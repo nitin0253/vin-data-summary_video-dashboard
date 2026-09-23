@@ -125,26 +125,29 @@ function normDate(s) {
 //   rows sorted by VIN; three parallel columns:
 //     k: combo index, d: created_on as days since 1970-01-01 (-1 = no date),
 //     v: VIN id delta from the previous row (VIN ids are 0..vins-1 in sorted order)
+// VIN strings go to a separate vins.txt (line 1 = lastSynced, then VIN id N on
+// line N+2) that the page only downloads when someone opens a drill-down.
 function encode(rows) {
   const dict = () => { const m = new Map(), list = []; return { list, id: (key, val) => { let i = m.get(key); if (i === undefined) { i = list.length; m.set(key, i); list.push(val); } return i; } }; };
   const teams = dict(), crm = dict(), src = dict(), vqc = dict(), combos = dict();
   const dayOf = c => c ? Math.round(Date.UTC(+c.slice(0, 4), +c.slice(5, 7) - 1, +c.slice(8, 10)) / 864e5) : -1;
 
   const sorted = rows.slice().sort((a, b) => a.vin < b.vin ? -1 : a.vin > b.vin ? 1 : 0);
-  const k = [], d = [], v = [];
+  const k = [], d = [], v = [], vinList = [];
   let vinId = -1, prevVin = null, prevId = 0;
   for (const r of sorted) {
-    if (r.vin !== prevVin) { vinId++; prevVin = r.vin; }
+    if (r.vin !== prevVin) { vinId++; prevVin = r.vin; vinList.push(r.vin); }
     const t = teams.id(r.eid + '\u0000' + r.tid, [r.eid, r.ent, r.tid, r.team]);
     const combo = [t, crm.id(r.crm, r.crm), src.id(r.src, r.src), vqc.id(r.vqc, r.vqc), r.vp];
     k.push(combos.id(combo.join(','), combo));
     d.push(dayOf(r.c));
     v.push(vinId - prevId); prevId = vinId;
   }
-  return {
+  const data = {
     lastSynced: new Date().toISOString(), count: rows.length, vins: vinId + 1,
     teams: teams.list, crm: crm.list, src: src.list, vqc: vqc.list, combos: combos.list, k, d, v,
   };
+  return { data, vinList };
 }
 
 async function main() {
@@ -165,9 +168,10 @@ async function main() {
     c:    normDate(pickField(r, ['created_on', 'Created_On', 'Created_ON'])),
   }));
 
-  const data = encode(rows);
+  const { data, vinList } = encode(rows);
   fs.mkdirSync(path.dirname(out), { recursive: true });
   fs.writeFileSync(out, JSON.stringify(data));
+  fs.writeFileSync(path.join(path.dirname(out), 'vins.txt'), [data.lastSynced, ...vinList.map(x => x.replace(/[\r\n]/g, ' '))].join('\n'));
 
   // Sanity summary in the Action log.
   console.log(`Wrote ${rows.length} rows (${data.vins} unique VINs, ${data.combos.length} combos) to ${out}: ${(fs.statSync(out).size / 1e6).toFixed(1)} MB`);

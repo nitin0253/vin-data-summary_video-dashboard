@@ -105,6 +105,25 @@
   tfoot td{font-weight:600;background:var(--surface-2);position:sticky;bottom:0;}
   .bar{display:inline-block;height:6px;border-radius:3px;background:var(--green);vertical-align:middle;margin-right:8px;opacity:.75;}
 
+  /* DRILL-DOWN */
+  .kpi.click{cursor:pointer;transition:border-color .15s,transform .15s;}
+  .kpi.click:hover{border-color:var(--accent);transform:translateY(-1px);}
+  .kpi-hint{font-size:11px;color:var(--accent);margin-top:8px;opacity:0;transition:opacity .15s;}
+  .kpi.click:hover .kpi-hint{opacity:1;}
+  .lnk{background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:inherit;}
+  .lnk:hover{color:var(--accent);text-decoration:underline;text-underline-offset:3px;}
+  .overlay{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding:40px 16px;}
+  .modal{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 20px 60px var(--shadow-lg);width:min(1200px,100%);max-height:calc(100vh - 80px);display:flex;flex-direction:column;overflow:hidden;}
+  .modal-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:16px 20px;border-bottom:1px solid var(--line);}
+  .modal-head h3{margin:0;font-family:'Bricolage Grotesque',serif;font-weight:600;font-size:18px;}
+  .modal-sub{font-size:12px;color:var(--muted);margin-top:4px;}
+  .modal-tools{display:flex;gap:8px;padding:10px 20px;border-bottom:1px solid var(--line);flex-wrap:wrap;align-items:center;}
+  .modal-tools .ms-search{flex:1;min-width:200px;}
+  .modal .tbl-wrap{max-height:none;flex:1;}
+  .modal-foot{padding:8px 20px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);}
+  .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:var(--bg);border:1px solid var(--line);}
+  .pill.yes{color:var(--green);border-color:var(--green);}
+
   .state{padding:60px 20px;text-align:center;color:var(--muted);}
   .state.err{color:#b3261e;}
 
@@ -441,11 +460,11 @@ function render(){
   for (let g = 0; g < nG; g++){
     if (!gTeams[g].size) continue;
     const t = byTeam ? D.teams[g] : null;
-    groups.push({ name: byTeam ? (t[3] || t[2] || '(blank)') : D.ents[g].name, sub: byTeam ? (t[1] || t[0]) : '', teams:gTeams[g], vins:gVins[g], vp:gVp[g] });
+    groups.push({ g, id: byTeam ? t[2] : D.ents[g].id, name: byTeam ? (t[3] || t[2] || '(blank)') : D.ents[g].name, sub: byTeam ? (t[1] || t[0]) : '', teams:gTeams[g], vins:gVins[g], vp:gVp[g] });
   }
   const vins = { size:vinsN }, vp = { size:vpN }, rows = { length:rowsN };
 
-  const list = groups.map(g => ({ name:g.name, sub:g.sub, teams:g.teams.size, vins:g.vins, vp:g.vp, pct: g.vins ? g.vp / g.vins : 0 }));
+  const list = groups.map(g => ({ g:g.g, id:g.id, name:g.name, sub:g.sub, teams:g.teams.size, vins:g.vins, vp:g.vp, pct: g.vins ? g.vp / g.vins : 0 }));
   const dir = sort.dir === 'asc' ? 1 : -1;
   list.sort((a, b) => sort.col === 'name' ? dir * a.name.localeCompare(b.name) : dir * (a[sort.col] - b[sort.col]) || b.vins - a.vins);
   const maxV = Math.max(1, ...list.map(g => g.vins));
@@ -454,13 +473,13 @@ function render(){
 
   $('content').innerHTML = `
     <section class="kpis">
-      <div class="kpi"><div class="kpi-label">Unique enterprises</div><div class="kpi-value">${fmt(ents.size)}</div><div class="kpi-sub">${esc(rangeLabel())}</div></div>
-      <div class="kpi"><div class="kpi-label">Unique teams</div><div class="kpi-value">${fmt(teams.size)}</div><div class="kpi-sub">across ${fmt(ents.size)} enterprise${ents.size === 1 ? '' : 's'}</div></div>
-      <div class="kpi"><div class="kpi-label">Unique VINs</div><div class="kpi-value">${fmt(vins.size)}</div><div class="kpi-sub">distinct sku_name · ${fmt(rows.length)} rows</div></div>
-      <div class="kpi accent"><div class="kpi-label">Videos processed</div><div class="kpi-value">${fmt(vp.size)}</div><div class="kpi-sub">Video_Processed = 1 · ${pctAll}% of VINs</div></div>
+      <div class="kpi click" data-k="ent" role="button" tabindex="0"><div class="kpi-label">Unique enterprises</div><div class="kpi-value">${fmt(ents.size)}</div><div class="kpi-sub">${esc(rangeLabel())}</div><div class="kpi-hint">Breakdown by enterprise →</div></div>
+      <div class="kpi click" data-k="team" role="button" tabindex="0"><div class="kpi-label">Unique teams</div><div class="kpi-value">${fmt(teams.size)}</div><div class="kpi-sub">across ${fmt(ents.size)} enterprise${ents.size === 1 ? '' : 's'}</div><div class="kpi-hint">Breakdown by team →</div></div>
+      <div class="kpi click" data-k="vins" role="button" tabindex="0"><div class="kpi-label">Unique VINs</div><div class="kpi-value">${fmt(vins.size)}</div><div class="kpi-sub">distinct sku_name · ${fmt(rows.length)} rows</div><div class="kpi-hint">View VINs →</div></div>
+      <div class="kpi accent click" data-k="vp" role="button" tabindex="0"><div class="kpi-label">Videos processed</div><div class="kpi-value">${fmt(vp.size)}</div><div class="kpi-sub">Video_Processed = 1 · ${pctAll}% of VINs</div><div class="kpi-hint">View processed VINs →</div></div>
     </section>
 
-    <section class="card">
+    <section class="card" id="breakdown">
       <div class="card-head">
         <h2>Breakdown by ${groupBy === 'ent' ? 'enterprise' : 'team'}</h2>
         <div class="seg" id="groupSeg">
@@ -477,23 +496,47 @@ function render(){
           <th class="num" data-s="vp">Videos processed${arrow('vp')}</th>
           <th class="num" data-s="pct">% processed${arrow('pct')}</th>
         </tr></thead>
-        <tbody>${list.map(g => `<tr>
-          <td>${esc(g.name)}${g.sub ? ` <span class="sub" style="color:var(--muted)">· ${esc(g.sub)}</span>` : ''}</td>
-          ${groupBy === 'ent' ? `<td class="num mono">${fmt(g.teams)}</td>` : ''}
-          <td class="num mono"><span class="bar" style="width:${Math.max(2, g.vins / maxV * 80)}px"></span>${fmt(g.vins)}</td>
-          <td class="num mono">${fmt(g.vp)}</td>
+        <tbody>${list.map(g => `<tr data-g="${g.g}" data-id="${esc(g.id)}">
+          <td><button class="lnk" data-a="filter" title="Filter the dashboard to this ${groupBy === 'ent' ? 'enterprise' : 'team'}">${esc(g.name)}</button>${g.sub ? ` <span class="sub" style="color:var(--muted)">· ${esc(g.sub)}</span>` : ''}</td>
+          ${groupBy === 'ent' ? `<td class="num mono"><button class="lnk" data-a="teams" title="Show this enterprise's teams">${fmt(g.teams)}</button></td>` : ''}
+          <td class="num mono"><span class="bar" style="width:${Math.max(2, g.vins / maxV * 80)}px"></span><button class="lnk" data-a="vins" title="View VINs">${fmt(g.vins)}</button></td>
+          <td class="num mono"><button class="lnk" data-a="vp" title="View processed VINs">${fmt(g.vp)}</button></td>
           <td class="num mono">${(g.pct * 100).toFixed(1)}%</td>
         </tr>`).join('')}</tbody>
         <tfoot><tr>
           <td>Total (${fmt(list.length)})</td>
           ${groupBy === 'ent' ? `<td class="num mono">${fmt(teams.size)}</td>` : ''}
-          <td class="num mono">${fmt(vins.size)}</td>
-          <td class="num mono">${fmt(vp.size)}</td>
+          <td class="num mono"><button class="lnk" data-a="vins" title="View VINs">${fmt(vins.size)}</button></td>
+          <td class="num mono"><button class="lnk" data-a="vp" title="View processed VINs">${fmt(vp.size)}</button></td>
           <td class="num mono">${pctAll}%</td>
         </tr></tfoot>
       </table></div>` : `<div class="state">No VINs match the current filters.</div>`}
     </section>`;
 
+  document.querySelectorAll('.kpi.click').forEach(el => {
+    const go = () => {
+      const k = el.dataset.k;
+      if (k === 'ent' || k === 'team'){
+        if (groupBy !== k){ groupBy = k; render(); }
+        $('breakdown').scrollIntoView({ behavior:'smooth', block:'start' });
+      } else openDrill({ vpOnly: k === 'vp' });
+    };
+    el.onclick = go;
+    el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } };
+  });
+  const tbl = document.querySelector('#breakdown table');
+  if (tbl) tbl.onclick = e => {
+    const btn = e.target.closest('.lnk'); if (!btn) return;
+    const tr = btn.closest('tr'), a = btn.dataset.a;
+    const inBody = tr.dataset.g != null;
+    const group = inBody ? { type:groupBy, g:+tr.dataset.g, name:btn.closest('tr').querySelector('[data-a="filter"]').textContent } : null;
+    if (a === 'filter' || a === 'teams'){
+      F[groupBy] = new Set([tr.dataset.id]);
+      if (a === 'teams') groupBy = 'team';
+      changed();
+      window.scrollTo({ top:0, behavior:'smooth' });
+    } else openDrill({ group, vpOnly: a === 'vp' });
+  };
   $('groupSeg').onclick = e => { const g = e.target.dataset?.g; if (g && g !== groupBy){ groupBy = g; render(); } };
   document.querySelectorAll('th[data-s]').forEach(th => th.onclick = () => {
     const c = th.dataset.s;
@@ -501,6 +544,115 @@ function render(){
     else { sort.col = c; sort.dir = c === 'name' ? 'asc' : 'desc'; }
     render();
   });
+}
+
+// ─────────────────────────────────────────────────────────────
+// DRILL-DOWN (record list for a KPI or a table cell)
+// ─────────────────────────────────────────────────────────────
+let VINS = null;   // VIN strings, index = VIN id (vins.txt, loaded on first drill-down)
+async function loadVins(){
+  if (VINS && VINS.ver === D.lastSynced) return;
+  const text = await (await fetch('vins.txt?t=' + encodeURIComponent(D.lastSynced), { cache:'no-store' })).text();
+  const lines = text.split('\n');
+  if (lines[0] !== D.lastSynced){
+    // A newer deploy landed after data.json was loaded: reload both so VIN ids line up.
+    await load();
+    if (lines[0] !== D.lastSynced) throw new Error('VIN list is out of date. Refresh the page.');
+  }
+  VINS = lines.slice(1); VINS.ver = lines[0];
+}
+
+const DRILL_COLS = [
+  ['VIN (sku_name)', r => r.vin], ['Enterprise', r => r.ent], ['Team', r => r.team],
+  ['CRM status', r => r.crm], ['Source', r => r.src], ['Video QC', r => r.vqc],
+  ['Video processed', r => r.vp], ['Created on', r => r.day],
+];
+const dayStr = d => d < 0 ? '' : new Date(d * 864e5).toISOString().slice(0, 10);
+
+function collectRows(group, vpOnly){
+  const ok = comboOk(null), { any, lo, hi } = dayBounds();
+  const { K, DAY, n, cTeam, cEnt, cVp } = D, out = [];
+  for (let i = 0; i < n; i++){
+    const c = K[i];
+    if (!ok[c]) continue;
+    if (vpOnly && cVp[c] !== 1) continue;
+    if (group && (group.type === 'team' ? cTeam[c] : cEnt[c]) !== group.g) continue;
+    if (!any){ const d = DAY[i]; if (d < 0 || d < lo || d > hi) continue; }
+    out.push(i);
+  }
+  out.sort((a, b) => DAY[b] - DAY[a] || D.VIN[a] - D.VIN[b]);
+  return out;
+}
+
+function rowRec(i){
+  const c = D.K[i], t = D.teams[D.cTeam[c]];
+  return { vin: VINS[D.VIN[i]], ent: t[1] || t[0], team: t[3] || t[2], crm: D.cv.crm[c], src: D.cv.src[c],
+           vqc: vqcLabel(D.cv.vqc[c]), vp: D.cVp[c] === 1 ? 'Yes' : 'No', day: dayStr(D.DAY[i]) };
+}
+
+async function openDrill({ group = null, vpOnly = false }){
+  const title = (vpOnly ? 'Processed VINs' : 'VINs') + (group ? ` · ${group.name}` : '');
+  const ov = document.createElement('div');
+  ov.className = 'overlay';
+  ov.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+    <div class="modal-head"><div><h3>${esc(title)}</h3><div class="modal-sub" id="dmSub">Loading…</div></div>
+      <button class="btn-icon" id="dmClose" aria-label="Close">✕</button></div>
+    <div class="modal-tools">
+      <input class="ms-search" id="dmSearch" placeholder="Search VIN, enterprise, team, status, source…" disabled>
+      <button class="btn-icon" id="dmCsv" disabled>Download CSV</button>
+    </div>
+    <div class="tbl-wrap" id="dmBody"><div class="state">Loading VIN list…</div></div>
+    <div class="modal-foot" id="dmFoot"></div>
+  </div>`;
+  document.body.appendChild(ov);
+  document.body.style.overflow = 'hidden';
+  const close = () => { ov.remove(); document.body.style.overflow = ''; document.removeEventListener('keydown', onKey); };
+  const onKey = e => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', onKey);
+  ov.onclick = e => { if (e.target === ov) close(); };
+  ov.querySelector('#dmClose').onclick = close;
+
+  try { await loadVins(); }
+  catch (err){ ov.querySelector('#dmBody').innerHTML = `<div class="state err">Couldn't load VINs: ${esc(err.message)}</div>`; return; }
+
+  const idx = collectRows(group, vpOnly);
+  const recs = idx.map(rowRec);
+  const vinCount = new Set(idx.map(i => D.VIN[i])).size;
+  const scope = [rangeLabel(), ...FILTERS.filter(f => F[f.key]).map(f => `${f.label}: ${F[f.key].size === 1 ? labelFor(f.key, [...F[f.key]][0]) : F[f.key].size + ' selected'}`)].join(' · ');
+  ov.querySelector('#dmSub').textContent = `${fmt(vinCount)} VINs · ${fmt(recs.length)} rows · ${scope}`;
+
+  const LIMIT = 500;
+  let shown = recs;
+  const draw = () => {
+    const q = ov.querySelector('#dmSearch').value.trim().toLowerCase();
+    shown = q ? recs.filter(r => DRILL_COLS.some(([, f]) => String(f(r)).toLowerCase().includes(q))) : recs;
+    ov.querySelector('#dmBody').innerHTML = shown.length ? `<table>
+      <thead><tr>${DRILL_COLS.map(([h]) => `<th style="cursor:default">${h}</th>`).join('')}</tr></thead>
+      <tbody>${shown.slice(0, LIMIT).map(r => `<tr>
+        <td class="mono">${esc(r.vin)}</td><td>${esc(r.ent)}</td><td>${esc(r.team)}</td>
+        <td>${esc(r.crm)}</td><td>${esc(r.src)}</td><td>${esc(r.vqc)}</td>
+        <td><span class="pill ${r.vp === 'Yes' ? 'yes' : ''}">${r.vp}</span></td><td class="mono">${r.day}</td>
+      </tr>`).join('')}</tbody></table>` : '<div class="state">No rows match.</div>';
+    ov.querySelector('#dmFoot').textContent = shown.length > LIMIT
+      ? `Showing the latest ${fmt(LIMIT)} of ${fmt(shown.length)} rows. Use search, or download the CSV for all of them.`
+      : `${fmt(shown.length)} row${shown.length === 1 ? '' : 's'}`;
+  };
+  let timer;
+  const search = ov.querySelector('#dmSearch');
+  search.disabled = false; search.focus();
+  search.oninput = () => { clearTimeout(timer); timer = setTimeout(draw, 150); };
+  const csvBtn = ov.querySelector('#dmCsv');
+  csvBtn.disabled = false;
+  csvBtn.onclick = () => {
+    const q = v => /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    const csv = [DRILL_COLS.map(([h]) => h).join(','), ...shown.map(r => DRILL_COLS.map(([, f]) => q(String(f(r)))).join(','))].join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv' }));
+    a.download = `${title.replace(/[^\w]+/g, '_').replace(/^_|_$/g, '')}_${toISO(new Date())}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  };
+  draw();
 }
 
 // ─────────────────────────────────────────────────────────────

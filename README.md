@@ -17,6 +17,14 @@ Hosted on **GitHub Pages**; data is refreshed by a GitHub Action.
 - **Unique VINs**: distinct `sku_name`
 - **Videos processed**: distinct `sku_name` where `Video_Processed = 1`
 
+## Drill-down
+- **Enterprises / Teams cards**: jump to the breakdown table grouped by enterprise or team.
+- **VINs / Videos processed cards**, and the VIN or processed numbers in any table row (or the total row): open the
+  matching records (VIN, enterprise, team, CRM status, source, video QC, processed, created date) with search and CSV download.
+- **Enterprise / team name** in the table: filter the whole dashboard to it. **Teams count**: filter to that enterprise and show its teams.
+
+VIN strings live in `vins.txt`, which is downloaded only when a drill-down is first opened.
+
 ## Filters
 Date on `created_on` (All time, Today, Yesterday, This week, Last week, This month (default), Last month, Last 30 days, Custom),
 Enterprise, Team, `crm_status`, `video_qualityCheck`, `source`. All of them are multi-select, and each list only shows
