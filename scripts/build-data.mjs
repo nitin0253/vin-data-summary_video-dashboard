@@ -180,12 +180,13 @@ async function main() {
     c:    normDate(pickField(r, ['created_on', 'Created_On', 'Created_ON'])),
     reg:   pickField(r, ['region', 'Region']),
     seg:   pickField(r, ['Customer Segment', 'customer_segment', 'Customer_Segment', 'customer segment', 'CustomerSegment', 'segment']),
-    stage: pickField(r, ['stage', 'Stage']),
+    stage: pickField(r, ['stage', 'Stage', 'apld.stage', 'apld_stage', 'apld stage', 'STAGE', 'enterprise_stage', 'Enterprise_Stage', 'team_stage', 'Team_Stage', 'account_stage', 'onboarding_stage', 'Stage Name', 'stage_name']),
     sub:   pickField(r, ['sub_stage', 'Sub_Stage', 'substage']),
     prod:  parseProducts(pickField(r, ['products', 'Products'])),
   }));
 
   const { data, vinList } = encode(rows);
+  data.headers = raw.length ? Object.keys(raw[0]) : [];   // column names from Metabase, for debugging
   fs.mkdirSync(path.dirname(out), { recursive: true });
   fs.writeFileSync(out, JSON.stringify(data));
   fs.writeFileSync(path.join(path.dirname(out), 'vins.txt'), [data.lastSynced, ...vinList.map(x => x.replace(/[\r\n]/g, ' '))].join('\n'));
@@ -193,6 +194,7 @@ async function main() {
   // Sanity summary in the Action log.
   console.log(`Wrote ${rows.length} rows (${data.vins} unique VINs, ${data.combos.length} combos) to ${out}: ${(fs.statSync(out).size / 1e6).toFixed(1)} MB`);
   console.log('Raw headers:', raw.length ? Object.keys(raw[0]).join(', ') : '(none)');
+  console.log(`Rows with a stage: ${rows.filter(r => r.stage).length}`);
   console.log('Customer segments:', [...new Set(rows.map(r => r.seg))].join(', ') || '(none; check the column name)');
   console.log(`Rows with a created_on date: ${rows.filter(r => r.c).length}; Video_Processed = 1: ${rows.filter(r => r.vp === 1).length}`);
   if (!rows.length) throw new Error('Metabase returned no rows; keeping the previous deploy');
