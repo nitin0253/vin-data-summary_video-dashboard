@@ -622,19 +622,32 @@ async function openDrill({ group = null, vpOnly = false }){
   ov.querySelector('#dmSub').textContent = `${fmt(vinCount)} VINs · ${fmt(recs.length)} rows · ${scope}`;
 
   const LIMIT = 500;
+  // Same behaviour as the breakdown table: click a header to sort, click again to flip.
+  // Default is newest first (Created on ↓); ties fall back to VIN ascending.
+  const ds = { col: DRILL_COLS.length - 1, dir: 'desc' };
+  const cmp = (a, b) => a < b ? -1 : a > b ? 1 : 0;
   let shown = recs;
   const draw = () => {
     const q = ov.querySelector('#dmSearch').value.trim().toLowerCase();
-    shown = q ? recs.filter(r => DRILL_COLS.some(([, f]) => String(f(r)).toLowerCase().includes(q))) : recs;
+    shown = q ? recs.filter(r => DRILL_COLS.some(([, f]) => String(f(r)).toLowerCase().includes(q))) : recs.slice();
+    const f = DRILL_COLS[ds.col][1], dir = ds.dir === 'asc' ? 1 : -1;
+    shown.sort((a, b) => dir * cmp(String(f(a)).toLowerCase(), String(f(b)).toLowerCase()) || cmp(a.vin, b.vin));
+    const arrow = i => ds.col === i ? `<span class="arr">${ds.dir === 'asc' ? '↑' : '↓'}</span>` : '';
     ov.querySelector('#dmBody').innerHTML = shown.length ? `<table>
-      <thead><tr>${DRILL_COLS.map(([h]) => `<th style="cursor:default">${h}</th>`).join('')}</tr></thead>
+      <thead><tr>${DRILL_COLS.map(([h], i) => `<th data-c="${i}">${h}${arrow(i)}</th>`).join('')}</tr></thead>
       <tbody>${shown.slice(0, LIMIT).map(r => `<tr>
         <td class="mono">${esc(r.vin)}</td><td>${esc(r.ent)}</td><td>${esc(r.team)}</td>
         <td>${esc(r.crm)}</td><td>${esc(r.src)}</td><td>${esc(r.vqc)}</td>
         <td><span class="pill ${r.vp === 'Yes' ? 'yes' : ''}">${r.vp}</span></td><td class="mono">${r.day}</td>
       </tr>`).join('')}</tbody></table>` : '<div class="state">No rows match.</div>';
+    ov.querySelectorAll('#dmBody th[data-c]').forEach(th => th.onclick = () => {
+      const c = +th.dataset.c;
+      if (ds.col === c) ds.dir = ds.dir === 'desc' ? 'asc' : 'desc';
+      else { ds.col = c; ds.dir = c === DRILL_COLS.length - 1 ? 'desc' : 'asc'; }
+      draw();
+    });
     ov.querySelector('#dmFoot').textContent = shown.length > LIMIT
-      ? `Showing the latest ${fmt(LIMIT)} of ${fmt(shown.length)} rows. Use search, or download the CSV for all of them.`
+      ? `Showing the first ${fmt(LIMIT)} of ${fmt(shown.length)} rows in this order. Use search, or download the CSV for all of them.`
       : `${fmt(shown.length)} row${shown.length === 1 ? '' : 's'}`;
   };
   let timer;
