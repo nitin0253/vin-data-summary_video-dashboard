@@ -468,7 +468,7 @@ function render(){
   const dir = sort.dir === 'asc' ? 1 : -1;
   list.sort((a, b) => sort.col === 'name' ? dir * a.name.localeCompare(b.name) : dir * (a[sort.col] - b[sort.col]) || b.vins - a.vins);
   const maxV = Math.max(1, ...list.map(g => g.vins));
-  const pctAll = vins.size ? (vp.size / vins.size * 100).toFixed(1) : '0.0';
+  const pctAll = vins.size ? (vp.size / vins.size * 100).toFixed(2) : '0.00';
   const arrow = c => sort.col === c ? `<span class="arr">${sort.dir === 'asc' ? '↑' : '↓'}</span>` : '';
 
   $('content').innerHTML = `
@@ -501,7 +501,7 @@ function render(){
           ${groupBy === 'ent' ? `<td class="num mono"><button class="lnk" data-a="teams" title="Show this enterprise's teams">${fmt(g.teams)}</button></td>` : ''}
           <td class="num mono"><span class="bar" style="width:${Math.max(2, g.vins / maxV * 80)}px"></span><button class="lnk" data-a="vins" title="View VINs">${fmt(g.vins)}</button></td>
           <td class="num mono"><button class="lnk" data-a="vp" title="View processed VINs">${fmt(g.vp)}</button></td>
-          <td class="num mono">${(g.pct * 100).toFixed(1)}%</td>
+          <td class="num mono">${(g.pct * 100).toFixed(2)}%</td>
         </tr>`).join('')}</tbody>
         <tfoot><tr>
           <td>Total (${fmt(list.length)})</td>
