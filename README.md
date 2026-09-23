@@ -15,6 +15,7 @@ Hosted on **GitHub Pages**; data is refreshed by a GitHub Action.
 - **Unique enterprises**: distinct `enterprise_id`
 - **Unique teams**: distinct `team_id`
 - **Unique VINs**: distinct `sku_name`
+- **QC On count**: distinct `sku_name` where `video_qualityCheck = 1`
 - **Videos processed**: distinct `sku_name` where `Video_Processed = 1`
 
 ## Cards and breakdown

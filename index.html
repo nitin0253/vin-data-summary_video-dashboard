@@ -83,7 +83,7 @@
 
   /* MAIN */
   main{padding:24px 28px 48px;max-width:1400px;margin:0 auto;}
-  .kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;}
+  .kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;}
   .kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px 20px;box-shadow:0 1px 3px var(--shadow);}
   .kpi-label{font-family:'JetBrains Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);}
   .kpi-value{font-family:'Bricolage Grotesque',serif;font-weight:600;font-size:38px;letter-spacing:-.02em;margin-top:8px;line-height:1.1;font-variant-numeric:tabular-nums;}
@@ -144,7 +144,8 @@
   .state{padding:60px 20px;text-align:center;color:var(--muted);}
   .state.err{color:#b3261e;}
 
-  @media(max-width:900px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr));}}
+  @media(max-width:1100px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr));}}
+  @media(max-width:600px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr));}}
   @media(max-width:600px){
     #sticky-top{position:static;}
     header,.filters,main{padding-left:16px;padding-right:16px;}
@@ -283,14 +284,14 @@ function decode(j){
   for (let i = 0; i < n; i++){ v += j.v[i]; VIN[i] = v; }
   const entIdx = new Map(), ents = [];
   for (const t of j.teams) if (!entIdx.has(t[0])){ entIdx.set(t[0], ents.length); ents.push({ id:t[0], name:t[1] || t[0] || '(blank)' }); }
-  const cv = { ent:[], team:[], crm:[], src:[], vqc:[], reg:[] }, cTeam = [], cEnt = [], cVp = [], cSrc = [], cReg = [];
+  const cv = { ent:[], team:[], crm:[], src:[], vqc:[], reg:[] }, cTeam = [], cEnt = [], cVp = [], cSrc = [], cReg = [], cQc = [];
   const regs = j.reg || [''];
   for (const [t, c, s, q, vp, rg = 0] of j.combos){
     const team = j.teams[t];
     cv.ent.push(team[0]); cv.team.push(team[2]); cv.crm.push(j.crm[c]); cv.src.push(j.src[s]); cv.vqc.push(j.vqc[q]); cv.reg.push(regs[rg] ?? '');
-    cTeam.push(t); cEnt.push(entIdx.get(team[0])); cVp.push(vp); cSrc.push(s); cReg.push(rg);
+    cTeam.push(t); cEnt.push(entIdx.get(team[0])); cVp.push(vp); cSrc.push(s); cReg.push(rg); cQc.push(j.vqc[q] === '1' ? 1 : 0);
   }
-  return { n, K, DAY, VIN, teams:j.teams, teamMeta:j.teamMeta || [], ents, srcs:j.src, regs, cv, cTeam, cEnt, cVp, cSrc, cReg, nc:j.combos.length, lastSynced:j.lastSynced };
+  return { n, K, DAY, VIN, teams:j.teams, teamMeta:j.teamMeta || [], ents, srcs:j.src, regs, cv, cTeam, cEnt, cVp, cSrc, cReg, cQc, nc:j.combos.length, lastSynced:j.lastSynced };
 }
 
 function comboOk(skip){
@@ -505,12 +506,12 @@ function render(){
   // One pass over rows. Rows are sorted by VIN, so a VIN is new for a bucket
   // whenever it differs from the last VIN that bucket saw.
   const ok = comboOk(null), { any, lo, hi } = dayBounds();
-  const { K, DAY, VIN, n, cTeam, cEnt, cVp } = D;
+  const { K, DAY, VIN, n, cTeam, cEnt, cVp, cQc } = D;
   const byTeam = groupBy === 'team';
   const nG = byTeam ? D.teams.length : D.ents.length;
   const gVins = new Int32Array(nG), gVp = new Int32Array(nG), gLast = new Int32Array(nG).fill(-1), gLastVp = new Int32Array(nG).fill(-1);
   const comboHit = new Uint8Array(D.nc);
-  let rowsN = 0, vinsN = 0, vpN = 0, last = -1, lastVp = -1;
+  let rowsN = 0, vinsN = 0, vpN = 0, qcN = 0, last = -1, lastVp = -1, lastQc = -1;
   for (let i = 0; i < n; i++){
     const c = K[i];
     if (!ok[c]) continue;
@@ -519,6 +520,7 @@ function render(){
     const v = VIN[i], g = byTeam ? cTeam[c] : cEnt[c];
     if (v !== last){ vinsN++; last = v; }
     if (v !== gLast[g]){ gVins[g]++; gLast[g] = v; }
+    if (cQc[c] === 1 && v !== lastQc){ qcN++; lastQc = v; }
     if (cVp[c] === 1){
       if (v !== lastVp){ vpN++; lastVp = v; }
       if (v !== gLastVp[g]){ gVp[g]++; gLastVp[g] = v; }
@@ -555,6 +557,7 @@ function render(){
       <div class="kpi click" data-k="ent" role="button" tabindex="0"><div class="kpi-label">Unique enterprises</div><div class="kpi-value">${fmt(ents.size)}</div><div class="kpi-sub">${esc(rangeLabel())}</div><div class="kpi-hint">Breakdown by enterprise →</div></div>
       <div class="kpi click" data-k="team" role="button" tabindex="0"><div class="kpi-label">Unique teams</div><div class="kpi-value">${fmt(teams.size)}</div><div class="kpi-sub">across ${fmt(ents.size)} enterprise${ents.size === 1 ? '' : 's'}</div><div class="kpi-hint">Breakdown by team →</div></div>
       <div class="kpi click" data-k="vins" role="button" tabindex="0"><div class="kpi-label">Unique VINs</div><div class="kpi-value">${fmt(vins.size)}</div><div class="kpi-sub">distinct sku_name · ${fmt(rows.length)} rows</div><div class="kpi-hint">View VINs →</div></div>
+      <div class="kpi click" data-k="qc" role="button" tabindex="0"><div class="kpi-label">QC On count</div><div class="kpi-value">${fmt(qcN)}</div><div class="kpi-sub">video_qualityCheck = 1 · ${vins.size ? (qcN / vins.size * 100).toFixed(2) : '0.00'}% of VINs</div><div class="kpi-hint">View QC-on VINs →</div></div>
       <div class="kpi accent click" data-k="vp" role="button" tabindex="0"><div class="kpi-label">Videos processed</div><div class="kpi-value">${fmt(vp.size)}</div><div class="kpi-sub">Video_Processed = 1 · ${pctAll}% of VINs</div><div class="kpi-hint">View processed VINs →</div></div>
     </section>
 
@@ -604,7 +607,7 @@ function render(){
       if (k === 'ent' || k === 'team'){
         if (groupBy !== k){ groupBy = k; render(); }
         $('breakdown').scrollIntoView({ behavior:'smooth', block:'start' });
-      } else openDrill({ vpOnly: k === 'vp' });
+      } else openDrill({ vpOnly: k === 'vp', qcOnly: k === 'qc' });
     };
     el.onclick = go;
     el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } };
@@ -663,13 +666,14 @@ const prodLabel = p => PRODUCT_LABEL[p] || p;
 const distinct = arr => [...new Set(arr.filter(Boolean))];
 const dayStr = d => d < 0 ? '' : new Date(d * 864e5).toISOString().slice(0, 10);
 
-function collectRows(group, vpOnly){
+function collectRows(group, vpOnly, qcOnly){
   const ok = comboOk(null), { any, lo, hi } = dayBounds();
-  const { K, DAY, n, cTeam, cEnt, cVp } = D, out = [];
+  const { K, DAY, n, cTeam, cEnt, cVp, cQc } = D, out = [];
   for (let i = 0; i < n; i++){
     const c = K[i];
     if (!ok[c]) continue;
     if (vpOnly && cVp[c] !== 1) continue;
+    if (qcOnly && cQc[c] !== 1) continue;
     if (group && (group.type === 'team' ? cTeam[c] : cEnt[c]) !== group.g) continue;
     if (!any){ const d = DAY[i]; if (d < 0 || d < lo || d > hi) continue; }
     out.push(i);
@@ -684,8 +688,8 @@ function rowRec(i){
            vqc: vqcLabel(D.cv.vqc[c]), vp: D.cVp[c] === 1 ? 'Yes' : 'No', day: dayStr(D.DAY[i]) };
 }
 
-async function openDrill({ group = null, vpOnly = false }){
-  const title = (vpOnly ? 'Processed VINs' : 'VINs') + (group ? ` · ${group.name}` : '');
+async function openDrill({ group = null, vpOnly = false, qcOnly = false }){
+  const title = (vpOnly ? 'Processed VINs' : qcOnly ? 'QC-on VINs' : 'VINs') + (group ? ` · ${group.name}` : '');
   const ov = document.createElement('div');
   ov.className = 'overlay';
   ov.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}">
@@ -709,7 +713,7 @@ async function openDrill({ group = null, vpOnly = false }){
   try { await loadVins(); }
   catch (err){ ov.querySelector('#dmBody').innerHTML = `<div class="state err">Couldn't load VINs: ${esc(err.message)}</div>`; return; }
 
-  const idx = collectRows(group, vpOnly);
+  const idx = collectRows(group, vpOnly, qcOnly);
   const recs = idx.map(rowRec);
   const vinCount = new Set(idx.map(i => D.VIN[i])).size;
   const scope = [rangeLabel(), ...FILTERS.filter(f => F[f.key]).map(f => `${f.label}: ${F[f.key].size === 1 ? labelFor(f.key, [...F[f.key]][0]) : F[f.key].size + ' selected'}`)].join(' · ');
