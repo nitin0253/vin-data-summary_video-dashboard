@@ -55,6 +55,7 @@
   .ms-search{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:7px 10px;font:400 13px 'Inter';color:var(--ink);outline:none;}
   .ms-search:focus{border-color:var(--accent);}
   .ms-bulk{display:flex;justify-content:space-between;padding:6px 2px;}
+  .ms-note{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);align-self:center;}
   .ms-bulk button{background:none;border:none;color:var(--accent);font-size:12px;cursor:pointer;padding:2px 4px;}
   .ms-list{max-height:280px;overflow-y:auto;}
   .ms-opt{display:flex;align-items:center;gap:8px;padding:6px 6px;border-radius:5px;cursor:pointer;font-size:13px;}
@@ -306,30 +307,24 @@ function comboOk(skip){
   return ok;
 }
 
-// Rows per combo that pass every filter except `skip` (and always the date range).
-function comboCounts(skip){
-  const ok = comboOk(skip), cnt = new Int32Array(D.nc), { any, lo, hi } = dayBounds();
-  const { K, DAY, n } = D;
+// Counts are unique VINs (same as the KPI cards), not rows. Rows are sorted by
+// VIN, so a VIN is new for a value when it differs from the last VIN that value saw.
+function optionsFor(key){
+  const ok = comboOk(key), { any, lo, hi } = dayBounds();
+  const { K, DAY, VIN, n } = D, cv = D.cv[key];
+  const vidx = new Map(), vOf = new Int32Array(D.nc);
+  for (let c = 0; c < D.nc; c++){ let x = vidx.get(cv[c]); if (x === undefined){ x = vidx.size; vidx.set(cv[c], x); } vOf[c] = x; }
+  const cnt = new Int32Array(vidx.size), last = new Int32Array(vidx.size).fill(-1), sub = new Array(vidx.size);
   for (let i = 0; i < n; i++){
     const c = K[i];
     if (!ok[c]) continue;
     if (!any){ const d = DAY[i]; if (d < 0 || d < lo || d > hi) continue; }
-    cnt[c]++;
+    const x = vOf[c], v = VIN[i];
+    if (sub[x] === undefined) sub[x] = key === 'team' ? D.ents[D.cEnt[c]].name : '';
+    if (v !== last[x]){ cnt[x]++; last[x] = v; }
   }
-  return cnt;
-}
-
-// Options for a filter come from rows matching every OTHER filter,
-// so e.g. Team only lists teams of the selected enterprises.
-function optionsFor(key){
-  const cnt = comboCounts(key), m = new Map();
-  for (let c = 0; c < D.nc; c++){
-    if (!cnt[c]) continue;
-    const v = D.cv[key][c];
-    let o = m.get(v);
-    if (!o){ o = { v, n:0, name: labelFor(key, v), sub: key === 'team' ? D.ents[D.cEnt[c]].name : '' }; m.set(v, o); }
-    o.n += cnt[c];
-  }
+  const m = new Map();
+  for (const [v, x] of vidx) if (cnt[x]) m.set(v, { v, n:cnt[x], name: labelFor(key, v), sub: sub[x] });
   // Keep selected values visible even if they currently match nothing.
   if (F[key]) for (const v of F[key]) if (!m.has(v)) m.set(v, { v, n:0, name: labelFor(key, v), sub:'' });
   return [...m.values()].sort((a, b) => b.n - a.n || a.name.localeCompare(b.name));
@@ -354,7 +349,7 @@ function buildFilterUI(){
       <div class="trigger" data-k="${f.key}"><span class="t-text">${f.all}</span><span class="chev">▾</span></div>
       <div class="panel ms-panel" data-k="${f.key}">
         <input class="ms-search" placeholder="Search ${f.label.toLowerCase()}…">
-        <div class="ms-bulk"><button data-a="all">Select all shown</button><button data-a="clear">Clear</button></div>
+        <div class="ms-bulk"><button data-a="all">Select all shown</button><span class="ms-note">unique VINs</span><button data-a="clear">Clear</button></div>
         <div class="ms-list"></div>
       </div>`;
     host.insertBefore(g, reset);
