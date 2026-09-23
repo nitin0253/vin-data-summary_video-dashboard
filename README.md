@@ -17,6 +17,12 @@ Hosted on **GitHub Pages**; data is refreshed by a GitHub Action.
 - **Unique VINs**: distinct `sku_name`
 - **Videos processed**: distinct `sku_name` where `Video_Processed = 1`
 
+## Cards and breakdown
+- **Source and Region cards** (below the KPIs): unique VINs per value and each value's share. They're counted under every
+  filter except their own dimension. Clicking a card toggles that filter.
+- **Breakdown table**: Stage (with sub-stage) and Products per team, taken from the team's latest row. An enterprise row
+  shows every value found across its teams.
+
 ## Drill-down
 - **Enterprises / Teams cards**: jump to the breakdown table grouped by enterprise or team.
 - **VINs / Videos processed cards**, and the VIN or processed numbers in any table row (or the total row): open the
@@ -27,7 +33,7 @@ VIN strings live in `vins.txt`, which is downloaded only when a drill-down is fi
 
 ## Filters
 Date on `created_on` (All time, Today, Yesterday, This week, Last week, This month (default), Last month, Last 30 days, Custom),
-Enterprise, Team, `crm_status`, `video_qualityCheck`, `source`. All of them are multi-select, and each list only shows
+Enterprise, Team, `crm_status`, `video_qualityCheck`, `source`, `region`. All of them are multi-select, and each list only shows
 values that match the other active filters.
 
 ## Setup (one time)

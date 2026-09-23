@@ -108,7 +108,7 @@
   .bar{display:inline-block;height:6px;border-radius:3px;background:var(--green);vertical-align:middle;margin-right:8px;opacity:.75;}
 
   /* SOURCE CARDS */
-  .src-row{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:10px;margin-top:14px;}
+  .src-row{display:grid;grid-template-columns:repeat(var(--cols,8),minmax(0,1fr));gap:10px;margin-top:12px;}
   .src-card{position:relative;min-width:0;background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--sc,var(--muted));border-radius:10px;padding:10px 12px;cursor:pointer;text-align:left;font:inherit;color:inherit;box-shadow:0 1px 3px var(--shadow);transition:border-color .15s,transform .15s;}
   .src-card:hover{transform:translateY(-1px);border-color:var(--sc,var(--accent));}
   .src-card.sel{border-color:var(--sc,var(--accent));box-shadow:0 0 0 1px var(--sc,var(--accent)) inset,0 1px 3px var(--shadow);}
@@ -117,7 +117,7 @@
   .src-val{font-family:'Bricolage Grotesque',serif;font-weight:600;font-size:22px;margin-top:4px;line-height:1.15;font-variant-numeric:tabular-nums;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .src-card.sel .src-val{color:var(--sc,var(--accent));}
   .src-pct{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);margin-top:2px;}
-  @media(max-width:900px){.src-row{grid-auto-flow:row;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));}}
+  @media(max-width:900px){.src-row{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));}}
 
   /* DRILL-DOWN */
   .kpi.click{cursor:pointer;transition:border-color .15s,transform .15s;}
@@ -137,6 +137,9 @@
   .modal-foot{padding:8px 20px;font-size:12px;color:var(--muted);border-top:1px solid var(--line);}
   .pill{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;background:var(--bg);border:1px solid var(--line);}
   .pill.yes{color:var(--green);border-color:var(--green);}
+  .chips{display:flex;flex-wrap:wrap;gap:4px;white-space:normal;min-width:160px;}
+  .chip{display:inline-block;padding:1px 7px;border-radius:999px;font-size:11px;background:var(--bg);border:1px solid var(--line);color:var(--ink-2);white-space:nowrap;}
+  .stage-sub{display:block;font-size:11px;color:var(--muted);}
 
   .state{padding:60px 20px;text-align:center;color:var(--muted);}
   .state.err{color:#b3261e;}
@@ -203,7 +206,7 @@
 // D is the decoded data.json (see scripts/build-data.mjs → encode()):
 // dictionaries + one entry per row in three typed arrays K (combo), DAY, VIN.
 let D = null;
-const F = { preset:'this_month', from:null, to:null, ent:null, team:null, crm:null, vqc:null, src:null };
+const F = { preset:'this_month', from:null, to:null, ent:null, team:null, crm:null, vqc:null, src:null, reg:null };
 let groupBy = 'ent';
 const sort = { col:'vins', dir:'desc' };
 
@@ -213,6 +216,7 @@ const FILTERS = [
   { key:'crm',  label:'CRM status',     all:'All statuses' },
   { key:'vqc',  label:'Video QC',       all:'All' },
   { key:'src',  label:'Source',         all:'All sources' },
+  { key:'reg',  label:'Region',         all:'All regions' },
 ];
 
 // ─────────────────────────────────────────────────────────────
@@ -279,13 +283,14 @@ function decode(j){
   for (let i = 0; i < n; i++){ v += j.v[i]; VIN[i] = v; }
   const entIdx = new Map(), ents = [];
   for (const t of j.teams) if (!entIdx.has(t[0])){ entIdx.set(t[0], ents.length); ents.push({ id:t[0], name:t[1] || t[0] || '(blank)' }); }
-  const cv = { ent:[], team:[], crm:[], src:[], vqc:[] }, cTeam = [], cEnt = [], cVp = [], cSrc = [];
-  for (const [t, c, s, q, vp] of j.combos){
+  const cv = { ent:[], team:[], crm:[], src:[], vqc:[], reg:[] }, cTeam = [], cEnt = [], cVp = [], cSrc = [], cReg = [];
+  const regs = j.reg || [''];
+  for (const [t, c, s, q, vp, rg = 0] of j.combos){
     const team = j.teams[t];
-    cv.ent.push(team[0]); cv.team.push(team[2]); cv.crm.push(j.crm[c]); cv.src.push(j.src[s]); cv.vqc.push(j.vqc[q]);
-    cTeam.push(t); cEnt.push(entIdx.get(team[0])); cVp.push(vp); cSrc.push(s);
+    cv.ent.push(team[0]); cv.team.push(team[2]); cv.crm.push(j.crm[c]); cv.src.push(j.src[s]); cv.vqc.push(j.vqc[q]); cv.reg.push(regs[rg] ?? '');
+    cTeam.push(t); cEnt.push(entIdx.get(team[0])); cVp.push(vp); cSrc.push(s); cReg.push(rg);
   }
-  return { n, K, DAY, VIN, teams:j.teams, ents, srcs:j.src, cv, cTeam, cEnt, cVp, cSrc, nc:j.combos.length, lastSynced:j.lastSynced };
+  return { n, K, DAY, VIN, teams:j.teams, teamMeta:j.teamMeta || [], ents, srcs:j.src, regs, cv, cTeam, cEnt, cVp, cSrc, cReg, nc:j.combos.length, lastSynced:j.lastSynced };
 }
 
 function comboOk(skip){
@@ -440,35 +445,59 @@ function buildDateUI(){
 // ─────────────────────────────────────────────────────────────
 // RENDER
 // ─────────────────────────────────────────────────────────────
-// Unique VINs per source under every filter except Source, so each card keeps
-// its number while one source is selected. Rows are sorted by VIN (see render).
-function sourceStats(){
-  const ok = comboOk('src'), { any, lo, hi } = dayBounds();
-  const { K, DAY, VIN, n, cSrc } = D, ns = D.srcs.length;
+// Card rows (Source, Region): unique VINs per value under every filter except
+// that dimension, so each card keeps its number while one value is selected.
+// Rows are sorted by VIN (see render), so "new VIN" = differs from the last one seen.
+const CARD_DIMS = [
+  { key:'src', all:'All sources', aria:'Unique VINs by source', values: () => D.srcs, of: c => D.cSrc[c] },
+  { key:'reg', all:'All regions', aria:'Unique VINs by region', values: () => D.regs, of: c => D.cReg[c] },
+];
+function dimStats(dim){
+  const ok = comboOk(dim.key), { any, lo, hi } = dayBounds();
+  const { K, DAY, VIN, n } = D, vals = dim.values(), ns = vals.length;
+  const idxOf = Int32Array.from({ length:D.nc }, (_, c) => dim.of(c));
   const cnt = new Int32Array(ns), last = new Int32Array(ns).fill(-1);
   let total = 0, lastAll = -1;
   for (let i = 0; i < n; i++){
     const c = K[i];
     if (!ok[c]) continue;
     if (!any){ const d = DAY[i]; if (d < 0 || d < lo || d > hi) continue; }
-    const v = VIN[i], s = cSrc[c];
+    const v = VIN[i], s = idxOf[c];
     if (v !== lastAll){ total++; lastAll = v; }
     if (v !== last[s]){ cnt[s]++; last[s] = v; }
   }
-  const list = D.srcs.map((v, i) => ({ v, n:cnt[i] })).filter(x => x.n).sort((a, b) => b.n - a.n || a.v.localeCompare(b.v));
+  const list = vals.map((v, i) => ({ v, n:cnt[i] })).filter(x => x.n).sort((a, b) => b.n - a.n || a.v.localeCompare(b.v));
   return { total, list };
 }
 
-// Stable colour per source name (by overall volume), so a card keeps its colour as filters change.
-let SRC_COLOR = null;
-function srcColor(v){
-  if (!SRC_COLOR){
+// Stable colour per value (by overall volume), so a card keeps its colour as filters change.
+const DIM_COLOR = {};
+function dimColor(key, v){
+  if (!DIM_COLOR[key]){
     const tot = new Map();
-    for (let c = 0; c < D.nc; c++) tot.set(D.cv.src[c], 0);
-    for (let i = 0; i < D.n; i++){ const v = D.cv.src[D.K[i]]; tot.set(v, tot.get(v) + 1); }
-    SRC_COLOR = new Map([...tot].sort((a, b) => b[1] - a[1]).map(([v], i) => [v, i < 8 ? `var(--c${i + 1})` : 'var(--muted)']));
+    for (let c = 0; c < D.nc; c++) tot.set(D.cv[key][c], 0);
+    for (let i = 0; i < D.n; i++){ const v = D.cv[key][D.K[i]]; tot.set(v, tot.get(v) + 1); }
+    DIM_COLOR[key] = new Map([...tot].sort((a, b) => b[1] - a[1]).map(([v], i) => [v, i < 8 ? `var(--c${i + 1})` : 'var(--muted)']));
   }
-  return SRC_COLOR.get(v) || 'var(--muted)';
+  return DIM_COLOR[key].get(v) || 'var(--muted)';
+}
+
+// Both rows share one column count so region cards line up with source cards.
+function cardRowsHTML(){
+  const stats = CARD_DIMS.map(dimStats);
+  const cols = Math.max(...stats.map(ss => ss.list.length + 1));
+  return CARD_DIMS.map((dim, i) => cardRowHTML(dim, stats[i], cols)).join('');
+}
+function cardRowHTML(dim, ss, cols){
+  const sel = F[dim.key];
+  return `<section class="src-row" data-dim="${dim.key}" aria-label="${dim.aria}" style="--cols:${cols}">
+    <button class="src-card ${!sel ? 'sel' : ''}" data-v="" style="--sc:var(--accent)">
+      <div class="kpi-label">${dim.all}</div><div class="src-val">${fmt(ss.total)}</div><div class="src-pct">100%</div>
+    </button>
+    ${ss.list.map(x => `<button class="src-card ${sel && sel.has(x.v) ? 'sel' : sel ? 'dim' : ''}" data-v="${esc(x.v)}" style="--sc:${dimColor(dim.key, x.v)}" title="Filter to ${esc(x.v || '(blank)')}">
+      <div class="kpi-label">${esc(x.v || '(blank)')}</div><div class="src-val">${fmt(x.n)}</div><div class="src-pct">${ss.total ? (x.n / ss.total * 100).toFixed(2) : '0.00'}%</div>
+    </button>`).join('')}
+  </section>`;
 }
 
 function render(){
@@ -505,14 +534,18 @@ function render(){
   for (let g = 0; g < nG; g++){
     if (!gTeams[g].size) continue;
     const t = byTeam ? D.teams[g] : null;
-    groups.push({ g, id: byTeam ? t[2] : D.ents[g].id, name: byTeam ? (t[3] || t[2] || '(blank)') : D.ents[g].name, sub: byTeam ? (t[1] || t[0]) : '', teams:gTeams[g], vins:gVins[g], vp:gVp[g] });
+    // Stage / products: the team's own values, or for an enterprise every value across its teams in scope.
+    const metas = [...gTeams[g]].map(ti => D.teamMeta[ti] || ['', '', []]);
+    const stage = distinct(metas.map(m => m[0])).sort(), stageSub = distinct(metas.map(m => m[1])).sort();
+    const prods = distinct(metas.flatMap(m => m[2])).sort((a, b) => prodLabel(a).localeCompare(prodLabel(b)));
+    groups.push({ stage, stageSub, prods, g, id: byTeam ? t[2] : D.ents[g].id, name: byTeam ? (t[3] || t[2] || '(blank)') : D.ents[g].name, sub: byTeam ? (t[1] || t[0]) : '', teams:gTeams[g], vins:gVins[g], vp:gVp[g] });
   }
   const vins = { size:vinsN }, vp = { size:vpN }, rows = { length:rowsN };
-  const ss = sourceStats();
 
-  const list = groups.map(g => ({ g:g.g, id:g.id, name:g.name, sub:g.sub, teams:g.teams.size, vins:g.vins, vp:g.vp, pct: g.vins ? g.vp / g.vins : 0 }));
+  const list = groups.map(g => ({ stageTxt:g.stage.join(' / '), subTxt:g.stageSub.join(' / '), prods:g.prods, prodTxt:g.prods.map(prodLabel).join(', '), g:g.g, id:g.id, name:g.name, sub:g.sub, teams:g.teams.size, vins:g.vins, vp:g.vp, pct: g.vins ? g.vp / g.vins : 0 }));
   const dir = sort.dir === 'asc' ? 1 : -1;
-  list.sort((a, b) => sort.col === 'name' ? dir * a.name.localeCompare(b.name) : dir * (a[sort.col] - b[sort.col]) || b.vins - a.vins);
+  const TEXT_SORT = { name:'name', stage:'stageTxt', products:'prodTxt' };
+  list.sort((a, b) => TEXT_SORT[sort.col] ? dir * (a[TEXT_SORT[sort.col]] || '').localeCompare(b[TEXT_SORT[sort.col]] || '') || b.vins - a.vins : dir * (a[sort.col] - b[sort.col]) || b.vins - a.vins);
   const maxV = Math.max(1, ...list.map(g => g.vins));
   const pctAll = vins.size ? (vp.size / vins.size * 100).toFixed(2) : '0.00';
   const arrow = c => sort.col === c ? `<span class="arr">${sort.dir === 'asc' ? '↑' : '↓'}</span>` : '';
@@ -525,14 +558,7 @@ function render(){
       <div class="kpi accent click" data-k="vp" role="button" tabindex="0"><div class="kpi-label">Videos processed</div><div class="kpi-value">${fmt(vp.size)}</div><div class="kpi-sub">Video_Processed = 1 · ${pctAll}% of VINs</div><div class="kpi-hint">View processed VINs →</div></div>
     </section>
 
-    <section class="src-row" id="srcRow" aria-label="Unique VINs by source">
-      <button class="src-card ${!F.src ? 'sel' : ''}" data-src="" style="--sc:var(--accent)">
-        <div class="kpi-label">All sources</div><div class="src-val">${fmt(ss.total)}</div><div class="src-pct">100%</div>
-      </button>
-      ${ss.list.map(x => `<button class="src-card ${F.src && F.src.has(x.v) ? 'sel' : F.src ? 'dim' : ''}" data-src="${esc(x.v)}" style="--sc:${srcColor(x.v)}" title="Filter to ${esc(x.v || '(blank)')}">
-        <div class="kpi-label">${esc(x.v || '(blank)')}</div><div class="src-val">${fmt(x.n)}</div><div class="src-pct">${ss.total ? (x.n / ss.total * 100).toFixed(2) : '0.00'}%</div>
-      </button>`).join('')}
-    </section>
+    ${cardRowsHTML()}
 
     <section class="card" id="breakdown">
       <div class="card-head">
@@ -546,6 +572,8 @@ function render(){
       <div class="tbl-wrap"><table>
         <thead><tr>
           <th data-s="name">${groupBy === 'ent' ? 'Enterprise' : 'Team'}${arrow('name')}</th>
+          <th data-s="stage">Stage${arrow('stage')}</th>
+          <th data-s="products">Products${arrow('products')}</th>
           ${groupBy === 'ent' ? `<th class="num" data-s="teams">Teams${arrow('teams')}</th>` : ''}
           <th class="num" data-s="vins">Unique VINs${arrow('vins')}</th>
           <th class="num" data-s="vp">Videos processed${arrow('vp')}</th>
@@ -553,13 +581,15 @@ function render(){
         </tr></thead>
         <tbody>${list.map(g => `<tr data-g="${g.g}" data-id="${esc(g.id)}">
           <td><button class="lnk" data-a="filter" title="Filter the dashboard to this ${groupBy === 'ent' ? 'enterprise' : 'team'}">${esc(g.name)}</button>${g.sub ? ` <span class="sub" style="color:var(--muted)">· ${esc(g.sub)}</span>` : ''}</td>
+          <td>${esc(g.stageTxt || '—')}${g.subTxt ? `<span class="stage-sub">${esc(g.subTxt)}</span>` : ''}</td>
+          <td><div class="chips">${g.prods.length ? g.prods.map(p => `<span class="chip">${esc(prodLabel(p))}</span>`).join('') : '<span style="color:var(--muted)">—</span>'}</div></td>
           ${groupBy === 'ent' ? `<td class="num mono"><button class="lnk" data-a="teams" title="Show this enterprise's teams">${fmt(g.teams)}</button></td>` : ''}
           <td class="num mono"><span class="bar" style="width:${Math.max(2, g.vins / maxV * 80)}px"></span><button class="lnk" data-a="vins" title="View VINs">${fmt(g.vins)}</button></td>
           <td class="num mono"><button class="lnk" data-a="vp" title="View processed VINs">${fmt(g.vp)}</button></td>
           <td class="num mono">${(g.pct * 100).toFixed(2)}%</td>
         </tr>`).join('')}</tbody>
         <tfoot><tr>
-          <td>Total (${fmt(list.length)})</td>
+          <td>Total (${fmt(list.length)})</td><td></td><td></td>
           ${groupBy === 'ent' ? `<td class="num mono">${fmt(teams.size)}</td>` : ''}
           <td class="num mono"><button class="lnk" data-a="vins" title="View VINs">${fmt(vins.size)}</button></td>
           <td class="num mono"><button class="lnk" data-a="vp" title="View processed VINs">${fmt(vp.size)}</button></td>
@@ -579,12 +609,12 @@ function render(){
     el.onclick = go;
     el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } };
   });
-  $('srcRow').onclick = e => {
+  document.querySelectorAll('.src-row').forEach(row => row.onclick = e => {
     const card = e.target.closest('.src-card'); if (!card) return;
-    const v = card.dataset.src;
-    F.src = (!v || (F.src && F.src.size === 1 && F.src.has(v))) ? null : new Set([v]);
+    const key = row.dataset.dim, v = card.dataset.v;
+    F[key] = (!v || (F[key] && F[key].size === 1 && F[key].has(v))) ? null : new Set([v]);
     changed();
-  };
+  });
   const tbl = document.querySelector('#breakdown table');
   if (tbl) tbl.onclick = e => {
     const btn = e.target.closest('.lnk'); if (!btn) return;
@@ -602,7 +632,7 @@ function render(){
   document.querySelectorAll('th[data-s]').forEach(th => th.onclick = () => {
     const c = th.dataset.s;
     if (sort.col === c) sort.dir = sort.dir === 'desc' ? 'asc' : 'desc';
-    else { sort.col = c; sort.dir = c === 'name' ? 'asc' : 'desc'; }
+    else { sort.col = c; sort.dir = ['name', 'stage', 'products'].includes(c) ? 'asc' : 'desc'; }
     render();
   });
 }
@@ -625,9 +655,12 @@ async function loadVins(){
 
 const DRILL_COLS = [
   ['VIN (sku_name)', r => r.vin], ['Enterprise', r => r.ent], ['Team', r => r.team],
-  ['CRM status', r => r.crm], ['Source', r => r.src], ['Video QC', r => r.vqc],
+  ['CRM status', r => r.crm], ['Source', r => r.src], ['Region', r => r.reg], ['Video QC', r => r.vqc],
   ['Video processed', r => r.vp], ['Created on', r => r.day],
 ];
+const PRODUCT_LABEL = { threeSixty:'360', image:'Image', video:'Video', advanceTools:'Advance tools' };
+const prodLabel = p => PRODUCT_LABEL[p] || p;
+const distinct = arr => [...new Set(arr.filter(Boolean))];
 const dayStr = d => d < 0 ? '' : new Date(d * 864e5).toISOString().slice(0, 10);
 
 function collectRows(group, vpOnly){
@@ -647,7 +680,7 @@ function collectRows(group, vpOnly){
 
 function rowRec(i){
   const c = D.K[i], t = D.teams[D.cTeam[c]];
-  return { vin: VINS[D.VIN[i]], ent: t[1] || t[0], team: t[3] || t[2], crm: D.cv.crm[c], src: D.cv.src[c],
+  return { vin: VINS[D.VIN[i]], ent: t[1] || t[0], team: t[3] || t[2], crm: D.cv.crm[c], src: D.cv.src[c], reg: D.cv.reg[c],
            vqc: vqcLabel(D.cv.vqc[c]), vp: D.cVp[c] === 1 ? 'Yes' : 'No', day: dayStr(D.DAY[i]) };
 }
 
@@ -698,7 +731,7 @@ async function openDrill({ group = null, vpOnly = false }){
       <thead><tr>${DRILL_COLS.map(([h], i) => `<th data-c="${i}">${h}${arrow(i)}</th>`).join('')}</tr></thead>
       <tbody>${shown.slice(0, LIMIT).map(r => `<tr>
         <td class="mono">${esc(r.vin)}</td><td>${esc(r.ent)}</td><td>${esc(r.team)}</td>
-        <td>${esc(r.crm)}</td><td>${esc(r.src)}</td><td>${esc(r.vqc)}</td>
+        <td>${esc(r.crm)}</td><td>${esc(r.src)}</td><td>${esc(r.reg)}</td><td>${esc(r.vqc)}</td>
         <td><span class="pill ${r.vp === 'Yes' ? 'yes' : ''}">${r.vp}</span></td><td class="mono">${r.day}</td>
       </tr>`).join('')}</tbody></table>` : '<div class="state">No rows match.</div>';
     ov.querySelectorAll('#dmBody th[data-c]').forEach(th => th.onclick = () => {
@@ -739,7 +772,7 @@ async function load(){
     // data.json is rebuilt from Metabase by the GitHub Action (.github/workflows/deploy.yml).
     const resp = await fetch('data.json?t=' + Date.now(), { cache:'no-store' });
     if (!resp.ok) throw new Error(`data.json not found (${resp.status}). Check that the "Deploy dashboard" GitHub Action has run.`);
-    D = decode(await resp.json()); SRC_COLOR = null;
+    D = decode(await resp.json()); for (const k in DIM_COLOR) delete DIM_COLOR[k];
     $('syncInfo').textContent = `Updated ${new Date(D.lastSynced).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })} · ${fmt(D.n)} rows`;
     syncTriggers();
     render();
