@@ -658,7 +658,7 @@ const DRILL_COLS = [
   ['CRM status', r => r.crm], ['Source', r => r.src], ['Region', r => r.reg], ['Video QC', r => r.vqc],
   ['Video processed', r => r.vp], ['Created on', r => r.day],
 ];
-const PRODUCT_LABEL = { threeSixty:'360', image:'Image', video:'Video', advanceTools:'Advance tools' };
+const PRODUCT_LABEL = { threeSixty:'360', image:'Image', video:'Video', advanceTools:'Advance tools', inventory:'Inventory', website:'Website' };
 const prodLabel = p => PRODUCT_LABEL[p] || p;
 const distinct = arr => [...new Set(arr.filter(Boolean))];
 const dayStr = d => d < 0 ? '' : new Date(d * 864e5).toISOString().slice(0, 10);
