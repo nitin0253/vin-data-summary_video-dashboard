@@ -12,11 +12,13 @@
     --bg:#f6f5f1;--surface:#ffffff;--surface-2:#fbfaf6;--ink:#0b0b0c;--ink-2:#404045;
     --muted:#76767c;--line:#e8e6df;--line-2:#d6d3c8;--accent:#1f3f72;--green:#1f7a52;
     --shadow:rgba(0,0,0,0.05);--shadow-lg:rgba(0,0,0,0.18);
+    --c1:#3b5bdb;--c2:#c92a4a;--c3:#d9820b;--c4:#2b8a57;--c5:#7048c6;--c6:#0c8599;--c7:#c2255c;--c8:#5c940d;
   }
   [data-theme="dark"]{
     --bg:#111113;--surface:#1c1c1f;--surface-2:#222226;--ink:#f0efe9;--ink-2:#b0b0b8;
     --muted:#8a8a92;--line:#2a2a2f;--line-2:#34343a;--accent:#6b9eff;--green:#4ade80;
     --shadow:rgba(0,0,0,0.3);--shadow-lg:rgba(0,0,0,0.6);
+    --c1:#748ffc;--c2:#f06582;--c3:#fcb54a;--c4:#51cf8a;--c5:#b197fc;--c6:#3bc9db;--c7:#f783ac;--c8:#a9e34b;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;}
@@ -104,6 +106,17 @@
   tbody tr:hover td{background:var(--bg);}
   tfoot td{font-weight:600;background:var(--surface-2);position:sticky;bottom:0;}
   .bar{display:inline-block;height:6px;border-radius:3px;background:var(--green);vertical-align:middle;margin-right:8px;opacity:.75;}
+
+  /* SOURCE CARDS */
+  .src-row{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:14px;}
+  .src-card{position:relative;background:var(--surface);border:1px solid var(--line);border-left:4px solid var(--sc,var(--muted));border-radius:12px;padding:14px 16px;cursor:pointer;text-align:left;font:inherit;color:inherit;box-shadow:0 1px 3px var(--shadow);transition:border-color .15s,transform .15s;}
+  .src-card:hover{transform:translateY(-1px);border-color:var(--sc,var(--accent));}
+  .src-card.sel{border-color:var(--sc,var(--accent));box-shadow:0 0 0 1px var(--sc,var(--accent)) inset,0 1px 3px var(--shadow);}
+  .src-card.dim{opacity:.55;}
+  .src-card .kpi-label{font-size:11px;text-transform:none;letter-spacing:.04em;}
+  .src-val{font-family:'Bricolage Grotesque',serif;font-weight:600;font-size:28px;margin-top:6px;line-height:1.1;font-variant-numeric:tabular-nums;}
+  .src-card.sel .src-val{color:var(--sc,var(--accent));}
+  .src-pct{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--muted);margin-top:4px;}
 
   /* DRILL-DOWN */
   .kpi.click{cursor:pointer;transition:border-color .15s,transform .15s;}
@@ -265,13 +278,13 @@ function decode(j){
   for (let i = 0; i < n; i++){ v += j.v[i]; VIN[i] = v; }
   const entIdx = new Map(), ents = [];
   for (const t of j.teams) if (!entIdx.has(t[0])){ entIdx.set(t[0], ents.length); ents.push({ id:t[0], name:t[1] || t[0] || '(blank)' }); }
-  const cv = { ent:[], team:[], crm:[], src:[], vqc:[] }, cTeam = [], cEnt = [], cVp = [];
+  const cv = { ent:[], team:[], crm:[], src:[], vqc:[] }, cTeam = [], cEnt = [], cVp = [], cSrc = [];
   for (const [t, c, s, q, vp] of j.combos){
     const team = j.teams[t];
     cv.ent.push(team[0]); cv.team.push(team[2]); cv.crm.push(j.crm[c]); cv.src.push(j.src[s]); cv.vqc.push(j.vqc[q]);
-    cTeam.push(t); cEnt.push(entIdx.get(team[0])); cVp.push(vp);
+    cTeam.push(t); cEnt.push(entIdx.get(team[0])); cVp.push(vp); cSrc.push(s);
   }
-  return { n, K, DAY, VIN, teams:j.teams, ents, cv, cTeam, cEnt, cVp, nc:j.combos.length, lastSynced:j.lastSynced };
+  return { n, K, DAY, VIN, teams:j.teams, ents, srcs:j.src, cv, cTeam, cEnt, cVp, cSrc, nc:j.combos.length, lastSynced:j.lastSynced };
 }
 
 function comboOk(skip){
@@ -426,6 +439,37 @@ function buildDateUI(){
 // ─────────────────────────────────────────────────────────────
 // RENDER
 // ─────────────────────────────────────────────────────────────
+// Unique VINs per source under every filter except Source, so each card keeps
+// its number while one source is selected. Rows are sorted by VIN (see render).
+function sourceStats(){
+  const ok = comboOk('src'), { any, lo, hi } = dayBounds();
+  const { K, DAY, VIN, n, cSrc } = D, ns = D.srcs.length;
+  const cnt = new Int32Array(ns), last = new Int32Array(ns).fill(-1);
+  let total = 0, lastAll = -1;
+  for (let i = 0; i < n; i++){
+    const c = K[i];
+    if (!ok[c]) continue;
+    if (!any){ const d = DAY[i]; if (d < 0 || d < lo || d > hi) continue; }
+    const v = VIN[i], s = cSrc[c];
+    if (v !== lastAll){ total++; lastAll = v; }
+    if (v !== last[s]){ cnt[s]++; last[s] = v; }
+  }
+  const list = D.srcs.map((v, i) => ({ v, n:cnt[i] })).filter(x => x.n).sort((a, b) => b.n - a.n || a.v.localeCompare(b.v));
+  return { total, list };
+}
+
+// Stable colour per source name (by overall volume), so a card keeps its colour as filters change.
+let SRC_COLOR = null;
+function srcColor(v){
+  if (!SRC_COLOR){
+    const tot = new Map();
+    for (let c = 0; c < D.nc; c++) tot.set(D.cv.src[c], 0);
+    for (let i = 0; i < D.n; i++){ const v = D.cv.src[D.K[i]]; tot.set(v, tot.get(v) + 1); }
+    SRC_COLOR = new Map([...tot].sort((a, b) => b[1] - a[1]).map(([v], i) => [v, i < 8 ? `var(--c${i + 1})` : 'var(--muted)']));
+  }
+  return SRC_COLOR.get(v) || 'var(--muted)';
+}
+
 function render(){
   if (!D) return;
   // One pass over rows. Rows are sorted by VIN, so a VIN is new for a bucket
@@ -463,6 +507,7 @@ function render(){
     groups.push({ g, id: byTeam ? t[2] : D.ents[g].id, name: byTeam ? (t[3] || t[2] || '(blank)') : D.ents[g].name, sub: byTeam ? (t[1] || t[0]) : '', teams:gTeams[g], vins:gVins[g], vp:gVp[g] });
   }
   const vins = { size:vinsN }, vp = { size:vpN }, rows = { length:rowsN };
+  const ss = sourceStats();
 
   const list = groups.map(g => ({ g:g.g, id:g.id, name:g.name, sub:g.sub, teams:g.teams.size, vins:g.vins, vp:g.vp, pct: g.vins ? g.vp / g.vins : 0 }));
   const dir = sort.dir === 'asc' ? 1 : -1;
@@ -477,6 +522,15 @@ function render(){
       <div class="kpi click" data-k="team" role="button" tabindex="0"><div class="kpi-label">Unique teams</div><div class="kpi-value">${fmt(teams.size)}</div><div class="kpi-sub">across ${fmt(ents.size)} enterprise${ents.size === 1 ? '' : 's'}</div><div class="kpi-hint">Breakdown by team →</div></div>
       <div class="kpi click" data-k="vins" role="button" tabindex="0"><div class="kpi-label">Unique VINs</div><div class="kpi-value">${fmt(vins.size)}</div><div class="kpi-sub">distinct sku_name · ${fmt(rows.length)} rows</div><div class="kpi-hint">View VINs →</div></div>
       <div class="kpi accent click" data-k="vp" role="button" tabindex="0"><div class="kpi-label">Videos processed</div><div class="kpi-value">${fmt(vp.size)}</div><div class="kpi-sub">Video_Processed = 1 · ${pctAll}% of VINs</div><div class="kpi-hint">View processed VINs →</div></div>
+    </section>
+
+    <section class="src-row" id="srcRow" aria-label="Unique VINs by source">
+      <button class="src-card ${!F.src ? 'sel' : ''}" data-src="" style="--sc:var(--accent)">
+        <div class="kpi-label">All sources</div><div class="src-val">${fmt(ss.total)}</div><div class="src-pct">100%</div>
+      </button>
+      ${ss.list.map(x => `<button class="src-card ${F.src && F.src.has(x.v) ? 'sel' : F.src ? 'dim' : ''}" data-src="${esc(x.v)}" style="--sc:${srcColor(x.v)}" title="Filter to ${esc(x.v || '(blank)')}">
+        <div class="kpi-label">${esc(x.v || '(blank)')}</div><div class="src-val">${fmt(x.n)}</div><div class="src-pct">${ss.total ? (x.n / ss.total * 100).toFixed(2) : '0.00'}%</div>
+      </button>`).join('')}
     </section>
 
     <section class="card" id="breakdown">
@@ -524,6 +578,12 @@ function render(){
     el.onclick = go;
     el.onkeydown = e => { if (e.key === 'Enter' || e.key === ' '){ e.preventDefault(); go(); } };
   });
+  $('srcRow').onclick = e => {
+    const card = e.target.closest('.src-card'); if (!card) return;
+    const v = card.dataset.src;
+    F.src = (!v || (F.src && F.src.size === 1 && F.src.has(v))) ? null : new Set([v]);
+    changed();
+  };
   const tbl = document.querySelector('#breakdown table');
   if (tbl) tbl.onclick = e => {
     const btn = e.target.closest('.lnk'); if (!btn) return;
@@ -678,7 +738,7 @@ async function load(){
     // data.json is rebuilt from Metabase by the GitHub Action (.github/workflows/deploy.yml).
     const resp = await fetch('data.json?t=' + Date.now(), { cache:'no-store' });
     if (!resp.ok) throw new Error(`data.json not found (${resp.status}). Check that the "Deploy dashboard" GitHub Action has run.`);
-    D = decode(await resp.json());
+    D = decode(await resp.json()); SRC_COLOR = null;
     $('syncInfo').textContent = `Updated ${new Date(D.lastSynced).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })} · ${fmt(D.n)} rows`;
     syncTriggers();
     render();
