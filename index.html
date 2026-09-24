@@ -203,7 +203,7 @@
       <span class="sync-info" id="syncInfo">Loading…</span>
       <a class="update-link" id="updateLink" href="https://github.com/nitin0253/vin-data-summary_video-dashboard/actions/workflows/deploy.yml" target="_blank" rel="noopener" title="Data is pulled from Metabase by a GitHub Action. Open it and press &quot;Run workflow&quot; to update now (about 2 minutes), then press Refresh.">Update now ↗</a>
       <button class="btn-icon" id="themeBtn" title="Toggle theme">◐</button>
-      <button class="btn-sync" id="syncBtn" title="Reload the latest published data. New data is published by the GitHub Action (see Update now).">Refresh</button>
+      <button class="btn-sync" id="syncBtn" title="Reload the whole dashboard with the latest published data. New data is published by the GitHub Action (see Update now).">Refresh</button>
     </div>
   </header>
   <div class="filters" id="filters">
@@ -1021,7 +1021,15 @@ function showAge(){
   document.addEventListener('click', closePanels);
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closePanels(); });
   $('resetBtn').onclick = () => { for (const f of FILTERS) F[f.key] = null; setPreset('this_month'); changed(); };
-  $('syncBtn').onclick = () => load();
+  // Full reload of the whole dashboard. The ?r= cache-buster makes the browser and
+  // GitHub Pages' CDN hand back the newest index.html; data.json is always fetched
+  // fresh. The #summary / #report view is kept.
+  $('syncBtn').onclick = () => {
+    $('syncBtn').disabled = true;
+    const u = new URL(location.href);
+    u.searchParams.set('r', Date.now());
+    location.replace(u.toString());
+  };
   const setView = v => { VIEW = v; if (location.hash !== '#' + v) history.replaceState(null, '', '#' + v); render(); window.scrollTo({ top:0 }); };
   $('viewSeg').onclick = e => { const v = e.target.closest('button')?.dataset.view; if (v && v !== VIEW) setView(v); };
   window.addEventListener('hashchange', () => { const v = location.hash === '#report' ? 'report' : 'summary'; if (v !== VIEW){ VIEW = v; render(); } });
