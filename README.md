@@ -41,7 +41,7 @@ use the same filters.
 ## Cards and breakdown
 - **Source, Region and Customer segment cards** (below the KPIs): unique VINs per value and each value's share. They're counted under every
   filter except their own dimension. Clicking a card toggles that filter.
-- **Breakdown table**: Stage (with sub-stage) and Products per team, taken from the team's latest row. An enterprise row
+- **Breakdown table**: Enterprise (team view), Stage (with sub-stage), Customer segment and Products. Segment comes from the rows in scope; stage and products per team, taken from the team's latest row. An enterprise row
   shows every value found across its teams.
 
 ## Drill-down

@@ -564,11 +564,13 @@ function render(){
       if (v !== gLastVp[g]){ gVp[g]++; gLastVp[g] = v; }
     }
   }
-  const ents = new Set(), teams = new Set(), gTeams = Array.from({ length:nG }, () => new Set());
+  const ents = new Set(), teams = new Set(), gTeams = Array.from({ length:nG }, () => new Set()), gSegs = Array.from({ length:nG }, () => new Set());
   for (let c = 0; c < D.nc; c++){
     if (!comboHit[c]) continue;
     ents.add(cEnt[c]); teams.add(cTeam[c]);
-    gTeams[byTeam ? cTeam[c] : cEnt[c]].add(cTeam[c]);
+    const g = byTeam ? cTeam[c] : cEnt[c];
+    gTeams[g].add(cTeam[c]);
+    if (D.cv.seg[c]) gSegs[g].add(D.cv.seg[c]);   // segment is per row: values seen in scope
   }
   const groups = [];
   for (let g = 0; g < nG; g++){
@@ -578,13 +580,13 @@ function render(){
     const metas = [...gTeams[g]].map(ti => D.teamMeta[ti] || ['', '', []]);
     const stage = distinct(metas.map(m => m[0])).sort(), stageSub = distinct(metas.map(m => m[1])).sort();
     const prods = distinct(metas.flatMap(m => m[2])).sort((a, b) => prodLabel(a).localeCompare(prodLabel(b)));
-    groups.push({ stage, stageSub, prods, g, id: byTeam ? t[2] : D.ents[g].id, name: byTeam ? (t[3] || t[2] || '(blank)') : D.ents[g].name, sub: byTeam ? (t[1] || t[0]) : '', teams:gTeams[g], vins:gVins[g], vp:gVp[g] });
+    groups.push({ stage, stageSub, prods, segs:[...gSegs[g]].sort(), g, id: byTeam ? t[2] : D.ents[g].id, name: byTeam ? (t[3] || t[2] || '(blank)') : D.ents[g].name, sub: byTeam ? (t[1] || t[0]) : '', teams:gTeams[g], vins:gVins[g], vp:gVp[g] });
   }
   const vins = { size:vinsN }, vp = { size:vpN }, rows = { length:rowsN };
 
-  const list = groups.map(g => ({ stageTxt:g.stage.join(' / '), subTxt:g.stageSub.join(' / '), prods:g.prods, prodTxt:g.prods.map(prodLabel).join(', '), g:g.g, id:g.id, name:g.name, sub:g.sub, teams:g.teams.size, vins:g.vins, vp:g.vp, pct: g.vins ? g.vp / g.vins : 0 }));
+  const list = groups.map(g => ({ segTxt:g.segs.join(' / '), ent:g.sub, stageTxt:g.stage.join(' / '), subTxt:g.stageSub.join(' / '), prods:g.prods, prodTxt:g.prods.map(prodLabel).join(', '), g:g.g, id:g.id, name:g.name, sub:g.sub, teams:g.teams.size, vins:g.vins, vp:g.vp, pct: g.vins ? g.vp / g.vins : 0 }));
   const dir = sort.dir === 'asc' ? 1 : -1;
-  const TEXT_SORT = { name:'name', stage:'stageTxt', products:'prodTxt' };
+  const TEXT_SORT = { name:'name', ent:'ent', stage:'stageTxt', seg:'segTxt', products:'prodTxt' };
   list.sort((a, b) => TEXT_SORT[sort.col] ? dir * (a[TEXT_SORT[sort.col]] || '').localeCompare(b[TEXT_SORT[sort.col]] || '') || b.vins - a.vins : dir * (a[sort.col] - b[sort.col]) || b.vins - a.vins);
   const maxV = Math.max(1, ...list.map(g => g.vins));
   const pctAll = vins.size ? (vp.size / vins.size * 100).toFixed(2) : '0.00';
@@ -613,7 +615,9 @@ function render(){
       <div class="tbl-wrap"><table>
         <thead><tr>
           <th data-s="name">${groupBy === 'ent' ? 'Enterprise' : 'Team'}${arrow('name')}</th>
+          ${groupBy === 'team' ? `<th data-s="ent">Enterprise${arrow('ent')}</th>` : ''}
           <th data-s="stage">Stage${arrow('stage')}</th>
+          <th data-s="seg">Customer segment${arrow('seg')}</th>
           <th data-s="products">Products${arrow('products')}</th>
           ${groupBy === 'ent' ? `<th class="num" data-s="teams">Teams${arrow('teams')}</th>` : ''}
           <th class="num" data-s="vins">Unique VINs${arrow('vins')}</th>
@@ -621,8 +625,10 @@ function render(){
           <th class="num" data-s="pct">% processed${arrow('pct')}</th>
         </tr></thead>
         <tbody>${list.map(g => `<tr data-g="${g.g}" data-id="${esc(g.id)}">
-          <td><button class="lnk" data-a="filter" title="Filter the dashboard to this ${groupBy === 'ent' ? 'enterprise' : 'team'}">${esc(g.name)}</button>${g.sub ? ` <span class="sub" style="color:var(--muted)">· ${esc(g.sub)}</span>` : ''}</td>
+          <td><button class="lnk" data-a="filter" title="Filter the dashboard to this ${groupBy === 'ent' ? 'enterprise' : 'team'}">${esc(g.name)}</button></td>
+          ${groupBy === 'team' ? `<td>${esc(g.ent || '—')}</td>` : ''}
           <td>${esc(g.stageTxt || '—')}${g.subTxt ? `<span class="stage-sub">${esc(g.subTxt)}</span>` : ''}</td>
+          <td>${esc(g.segTxt || '—')}</td>
           <td><div class="chips">${g.prods.length ? g.prods.map(p => `<span class="chip">${esc(prodLabel(p))}</span>`).join('') : '<span style="color:var(--muted)">—</span>'}</div></td>
           ${groupBy === 'ent' ? `<td class="num mono"><button class="lnk" data-a="teams" title="Show this enterprise's teams">${fmt(g.teams)}</button></td>` : ''}
           <td class="num mono"><span class="bar" style="width:${Math.max(2, g.vins / maxV * 80)}px"></span><button class="lnk" data-a="vins" title="View VINs">${fmt(g.vins)}</button></td>
@@ -630,7 +636,7 @@ function render(){
           <td class="num mono">${(g.pct * 100).toFixed(2)}%</td>
         </tr>`).join('')}</tbody>
         <tfoot><tr>
-          <td>Total (${fmt(list.length)})</td><td></td><td></td>
+          <td>Total (${fmt(list.length)})</td>${groupBy === 'team' ? '<td></td>' : ''}<td></td><td></td><td></td>
           ${groupBy === 'ent' ? `<td class="num mono">${fmt(teams.size)}</td>` : ''}
           <td class="num mono"><button class="lnk" data-a="vins" title="View VINs">${fmt(vins.size)}</button></td>
           <td class="num mono"><button class="lnk" data-a="vp" title="View processed VINs">${fmt(vp.size)}</button></td>
@@ -673,7 +679,7 @@ function render(){
   document.querySelectorAll('th[data-s]').forEach(th => th.onclick = () => {
     const c = th.dataset.s;
     if (sort.col === c) sort.dir = sort.dir === 'desc' ? 'asc' : 'desc';
-    else { sort.col = c; sort.dir = ['name', 'stage', 'products'].includes(c) ? 'asc' : 'desc'; }
+    else { sort.col = c; sort.dir = ['name', 'ent', 'stage', 'seg', 'products'].includes(c) ? 'asc' : 'desc'; }
     render();
   });
 }
