@@ -10,13 +10,13 @@
 <style>
   :root{
     --bg:#f6f5f1;--surface:#ffffff;--surface-2:#fbfaf6;--ink:#0b0b0c;--ink-2:#404045;
-    --muted:#76767c;--line:#e8e6df;--line-2:#d6d3c8;--accent:#1f3f72;--green:#1f7a52;
+    --muted:#76767c;--line:#e8e6df;--line-2:#d6d3c8;--accent:#1f3f72;--green:#1f7a52;--amber:#9a6700;
     --shadow:rgba(0,0,0,0.05);--shadow-lg:rgba(0,0,0,0.18);
     --c1:#3b5bdb;--c2:#c92a4a;--c3:#d9820b;--c4:#2b8a57;--c5:#7048c6;--c6:#0c8599;--c7:#c2255c;--c8:#5c940d;
   }
   [data-theme="dark"]{
     --bg:#111113;--surface:#1c1c1f;--surface-2:#222226;--ink:#f0efe9;--ink-2:#b0b0b8;
-    --muted:#8a8a92;--line:#2a2a2f;--line-2:#34343a;--accent:#6b9eff;--green:#4ade80;
+    --muted:#8a8a92;--line:#2a2a2f;--line-2:#34343a;--accent:#6b9eff;--green:#4ade80;--amber:#f5c265;
     --shadow:rgba(0,0,0,0.3);--shadow-lg:rgba(0,0,0,0.6);
     --c1:#748ffc;--c2:#f06582;--c3:#fcb54a;--c4:#51cf8a;--c5:#b197fc;--c6:#3bc9db;--c7:#f783ac;--c8:#a9e34b;
   }
@@ -37,6 +37,9 @@
   .tag{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;}
   .actions{display:flex;align-items:center;gap:10px;}
   .sync-info{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);}
+  .sync-info.stale{color:var(--amber,#b27a00);}
+  .update-link{font-size:12px;color:var(--accent);text-decoration:none;white-space:nowrap;}
+  .update-link:hover{text-decoration:underline;}
   .btn-icon{background:var(--surface);color:var(--ink-2);border:1px solid var(--line);padding:7px 12px;border-radius:6px;font:500 13px 'Inter';cursor:pointer;}
   .btn-icon:hover{background:var(--bg);color:var(--ink);}
   .btn-sync{background:var(--ink);color:var(--surface);border:none;padding:8px 16px;border-radius:6px;font:500 13px 'Inter';cursor:pointer;}
@@ -170,7 +173,7 @@
   @media(max-width:600px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr));}}
   @media(max-width:700px){.rep-cards{grid-template-columns:minmax(0,1fr);}}
   @media(max-width:760px){header{grid-template-columns:1fr auto;}.view-seg{grid-column:1 / -1;grid-row:2;}}
-  @media(max-width:600px){header .tag,.sync-info{display:none;}header h1{font-size:18px;white-space:nowrap;}}
+  @media(max-width:600px){header .tag,.sync-info,.update-link{display:none;}header h1{font-size:18px;white-space:nowrap;}}
   @media(max-width:600px){
     #sticky-top{position:static;}
     header,.filters,main{padding-left:16px;padding-right:16px;}
@@ -198,8 +201,9 @@
     </div>
     <div class="actions">
       <span class="sync-info" id="syncInfo">Loading…</span>
+      <a class="update-link" id="updateLink" href="https://github.com/nitin0253/vin-data-summary_video-dashboard/actions/workflows/deploy.yml" target="_blank" rel="noopener" title="Data is pulled from Metabase by a GitHub Action. Open it and press &quot;Run workflow&quot; to update now (about 2 minutes), then press Refresh.">Update now ↗</a>
       <button class="btn-icon" id="themeBtn" title="Toggle theme">◐</button>
-      <button class="btn-sync" id="syncBtn" title="Reload the latest data.json">Refresh</button>
+      <button class="btn-sync" id="syncBtn" title="Reload the latest published data. New data is published by the GitHub Action (see Update now).">Refresh</button>
     </div>
   </header>
   <div class="filters" id="filters">
@@ -978,7 +982,7 @@ async function load(){
     const resp = await fetch('data.json?t=' + Date.now(), { cache:'no-store' });
     if (!resp.ok) throw new Error(`data.json not found (${resp.status}). Check that the "Deploy dashboard" GitHub Action has run.`);
     D = decode(await resp.json()); for (const k in DIM_COLOR) delete DIM_COLOR[k];
-    $('syncInfo').textContent = `Updated ${new Date(D.lastSynced).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })} · ${fmt(D.n)} rows`;
+    showAge();
     syncTriggers();
     render();
   } catch (err){
@@ -987,6 +991,18 @@ async function load(){
   } finally {
     $('syncBtn').disabled = false;
   }
+}
+
+// Header text: when the published data was pulled from Metabase and how long ago.
+// Turns amber after 30 minutes so a delayed GitHub schedule is obvious.
+function showAge(){
+  if (!D) return;
+  const t = new Date(D.lastSynced), mins = Math.max(0, Math.round((Date.now() - t) / 60000));
+  const ago = mins < 1 ? 'just now' : mins < 60 ? `${mins} min ago` : `${Math.floor(mins / 60)} h ${mins % 60} min ago`;
+  const el = $('syncInfo');
+  el.textContent = `Updated ${t.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })} · ${ago} · ${fmt(D.n)} rows`;
+  el.classList.toggle('stale', mins > 30);
+  el.title = `Data pulled from Metabase at ${t.toLocaleString()}`;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1012,6 +1028,7 @@ async function load(){
   document.querySelectorAll('#viewSeg button').forEach(b => b.classList.toggle('on', b.dataset.view === VIEW));
   load();
   setInterval(load, 5 * 60 * 1000);
+  setInterval(showAge, 60 * 1000);
 })();
 </script>
 </body>
